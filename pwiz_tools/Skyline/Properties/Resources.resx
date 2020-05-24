@@ -10863,4 +10863,13 @@ Invalid peptide sequence at position 18
   <data name="BrukerTimsTofMethodExporter_ExportMethod_Getting_scheduling___" xml:space="preserve">
     <value>Getting scheduling...</value>
   </data>
+  <data name="ImportPeptideSearchDlg_NextPage_FastFileMissing_DDASearch" xml:space="preserve">
+    <value>A FASTA file is required for the DDA search.</value>
+  </data>
+  <data name="ImportPeptideSearchDlg_NextPage_Import_FASTA__required_" xml:space="preserve">
+    <value>Import FASTA (required)</value>
+  </data>
+  <data name="MatchModificationsControl_ModificationLabelText_DDA_Search" xml:space="preserve">
+    <value>Specify all modifications you want to include in the search:</value>
+  </data>
 </root>
