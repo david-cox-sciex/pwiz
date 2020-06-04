@@ -9,6 +9,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using NHibernate.Mapping.ByCode;
+using pwiz.Common.Chemistry;
 using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Alerts;
 using pwiz.Skyline.Controls;
@@ -79,19 +80,19 @@ namespace pwiz.Skyline.SettingsUI
         {
             //
             List<string> checkedItemNames = new List<string>();
-            foreach (var elem in clbFixedModifs.CheckedItems)
+            foreach (var elem in searchEngines.CheckedItems)
             {
                 checkedItemNames.Add(((MatchModificationsControl.ListBoxModification)elem).ToString());
             }
-            clbFixedModifs.Items.Clear();
+            searchEngines.Items.Clear();
             foreach (var mod in _documentContainer.Document.Settings.PeptideSettings.Modifications.StaticModifications)
             {
                 MatchModificationsControl.ListBoxModification modi =
                     new MatchModificationsControl.ListBoxModification(mod);
                 if (checkedItemNames.Contains(modi.ToString()) || !modi.Mod.IsVariable)
-                    clbFixedModifs.Items.Add(modi, CheckState.Checked);
+                    searchEngines.Items.Add(modi, CheckState.Checked);
                 else
-                    clbFixedModifs.Items.Add(modi, CheckState.Unchecked);
+                    searchEngines.Items.Add(modi, CheckState.Unchecked);
 
             }
 
@@ -156,17 +157,19 @@ namespace pwiz.Skyline.SettingsUI
        
         public bool SaveAllSettings()
         {
+            var checkedItems = searchEngines.CheckedItems.Cast<string>().ToList();
+
             bool valid = ValidateEntries();
             if (!valid)
                 return false;
-            Dictionary<StaticMod, bool> fixedAndVariableModifs = new Dictionary<StaticMod, bool>();
-            for (int i = 0; i <clbFixedModifs.Items.Count; ++i)
+            /*Dictionary<StaticMod, bool> fixedAndVariableModifs = new Dictionary<StaticMod, bool>();
+            for (int i = 0; i <searchEngines.Items.Count; ++i)
             {
                 fixedAndVariableModifs.Add(
-                    ((MatchModificationsControl.ListBoxModification) clbFixedModifs.Items[i]).Mod,
-                    clbFixedModifs.GetItemCheckState(i) == CheckState.Checked);
+                    ((MatchModificationsControl.ListBoxModification) searchEngines.Items[i]).Mod,
+                    searchEngines.GetItemCheckState(i) == CheckState.Checked);
             }
-            ImportPeptideSearch.SearchEngine.SaveModifications(fixedAndVariableModifs);
+            ImportPeptideSearch.SearchEngine.SaveModifications(fixedAndVariableModifs);*/
             return true;
         }
 
@@ -180,14 +183,7 @@ namespace pwiz.Skyline.SettingsUI
                     "MS1 Tolerance incorrect");
                 return false;
             }
-            string ms1Unit;
-            if (!ValidateCombobox(cbMS1TolUnit, out ms1Unit))
-            {
-                helper.ShowTextBoxError(cbMS1TolUnit, /*add resource here */
-                    "MS1 tolerance unit must be selected");
-                return false;
-            }
-            ImportPeptideSearch.SearchEngine.SetPrecursorMassTolerance(ms1Tol, ms1Unit);
+            ImportPeptideSearch.SearchEngine.SetPrecursorMassTolerance(new MzTolerance(ms1Tol, (MzTolerance.Units) cbMS1TolUnit.SelectedIndex));
 
             double ms2Tol;
             if (!helper.ValidateDecimalTextBox(txtMS2Tolerance, 0, 100, out ms2Tol))
@@ -196,14 +192,7 @@ namespace pwiz.Skyline.SettingsUI
                     "MS2 Tolerance incorrect");
                 return false;
             }
-            string ms2Unit;
-            if (!ValidateCombobox(cbMS2TolUnit, out ms2Unit))
-            {
-                helper.ShowTextBoxError(cbMS2TolUnit, /*add resource here */
-                    "MS2 tolerance unit must be selected");
-                return false;
-            }
-            ImportPeptideSearch.SearchEngine.SetFragmentIonMassTolerance(ms2Tol, ms2Unit);
+            ImportPeptideSearch.SearchEngine.SetFragmentIonMassTolerance(new MzTolerance(ms2Tol, (MzTolerance.Units) cbMS1TolUnit.SelectedIndex));
 
             string fragmentIons;
             if (!ValidateCombobox(cbFragmentIons, out fragmentIons))
@@ -215,6 +204,18 @@ namespace pwiz.Skyline.SettingsUI
             ImportPeptideSearch.SearchEngine.SetFragmentIons(fragmentIons);
 
             return true;
+        }
+
+        private bool uncheckingAll = false;
+        private void searchEngines_ItemCheck(object sender, ItemCheckEventArgs e)
+        {
+            if (!uncheckingAll)
+            {
+                uncheckingAll = true;
+                for (int i = 0; i < searchEngines.Items.Count; ++i)
+                    searchEngines.SetItemChecked(i, false);
+                uncheckingAll = false;
+            }
         }
     }
     

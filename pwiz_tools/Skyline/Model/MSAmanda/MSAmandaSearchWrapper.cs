@@ -10,6 +10,7 @@ using MSAmanda.Core;
 using MSAmanda.Utils;
 using MSAmanda.InOutput;
 using MSAmanda.InOutput.Output;
+using pwiz.Common.Chemistry;
 using pwiz.ProteowizardWrapper;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Util;
@@ -31,7 +32,7 @@ namespace pwiz.Skyline.Model.MSAmanda
         private OutputParameters _outputParameters;
         private MSAmandaSpectrumParser amandaInputParser;
 
-        public override event NotificationEventHandler SearchProgessChanged;
+        public override event NotificationEventHandler SearchProgressChanged;
 
 
 
@@ -73,7 +74,7 @@ namespace pwiz.Skyline.Model.MSAmanda
 
         private void Helper_SearchProgressChanged(string message)
         {
-            SearchProgessChanged?.Invoke(this, new MessageEventArgs(){Message = message});
+            SearchProgressChanged?.Invoke(this, new MessageEventArgs(){Message = message});
         }
 
         public override void SetEnzyme(pwiz.Skyline.Model.DocSettings.Enzyme enzyme, int maxMissedCleavages)
@@ -92,22 +93,9 @@ namespace pwiz.Skyline.Model.MSAmanda
 
        
 
-        public void SetTolerance(double tol, string unit, bool isMS1)
+        public void SetTolerance(MzTolerance tol, bool isMS1)
         {
-            MassUnit massUnit = MassUnit.DA;
-            switch (unit.ToUpper())
-            {
-                case "PPM":
-                    massUnit = MassUnit.PPM;
-                    break;
-                case "MMU":
-                    massUnit = MassUnit.MMU;
-                    break;
-                default:
-                    massUnit = MassUnit.DA;
-                    break;
-            }
-            Tolerance tolerance = new Tolerance(tol, massUnit);
+            Tolerance tolerance = new Tolerance(tol.Value, (MassUnit) tol.Unit);
             if (isMS1)
                 Settings.Ms1Tolerance = tolerance;
             else
@@ -124,14 +112,14 @@ namespace pwiz.Skyline.Model.MSAmanda
             get { return Properties.Resources.MSAmandaLogo; }
         }
 
-        public override void SetPrecursorMassTolerance(double mass, string unit)
+        public override void SetPrecursorMassTolerance(MzTolerance tol)
         {
-            SetTolerance(mass, unit, true);
+            SetTolerance(tol, true);
         }
 
-        public override void SetFragmentIonMassTolerance(double mass, string unit)
+        public override void SetFragmentIonMassTolerance(MzTolerance tol)
         {
-            SetTolerance(mass, unit, false);
+            SetTolerance(tol, false);
         }
 
         public override void SetFragmentIons(string ions)
@@ -240,12 +228,9 @@ namespace pwiz.Skyline.Model.MSAmanda
                 List<Spectrum> spectra = new List<Spectrum>();
                 foreach (string rawFileName in SpectrumFileNames)
                 {
+                    tokenSource.Token.ThrowIfCancellationRequested();
+
                     InitializeEngine(tokenSource, rawFileName);
-                    if (tokenSource.Token.IsCancellationRequested)
-                    {
-                        
-                        tokenSource.Token.ThrowIfCancellationRequested();
-                    }
 
                     amandaInputParser = new MSAmandaSpectrumParser(rawFileName, Settings.ConsideredCharges, true);
                     SearchEngine.SetInputParser(amandaInputParser);

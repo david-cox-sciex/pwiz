@@ -40,8 +40,8 @@
             this.lblSearchEngineName = new System.Windows.Forms.Label();
             this.label2 = new System.Windows.Forms.Label();
             this.pBLogo = new System.Windows.Forms.PictureBox();
-            this.clbFixedModifs = new System.Windows.Forms.CheckedListBox();
-            this.lblFixedModifications = new System.Windows.Forms.Label();
+            this.searchEngines = new System.Windows.Forms.CheckedListBox();
+            this.searchEngineLabel = new System.Windows.Forms.Label();
             this.flowLayoutPanel1 = new System.Windows.Forms.FlowLayoutPanel();
             this.label1 = new System.Windows.Forms.Label();
             this.label3 = new System.Windows.Forms.Label();
@@ -51,6 +51,7 @@
             // 
             // cbMS1TolUnit
             // 
+            this.cbMS1TolUnit.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.cbMS1TolUnit.FormattingEnabled = true;
             this.cbMS1TolUnit.Location = new System.Drawing.Point(153, 70);
             this.cbMS1TolUnit.Name = "cbMS1TolUnit";
@@ -91,6 +92,7 @@
             // 
             // cbMS2TolUnit
             // 
+            this.cbMS2TolUnit.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.cbMS2TolUnit.FormattingEnabled = true;
             this.cbMS2TolUnit.Location = new System.Drawing.Point(153, 110);
             this.cbMS2TolUnit.Name = "cbMS2TolUnit";
@@ -108,6 +110,7 @@
             // 
             // cbFragmentIons
             // 
+            this.cbFragmentIons.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.cbFragmentIons.FormattingEnabled = true;
             this.cbFragmentIons.Location = new System.Drawing.Point(13, 154);
             this.cbFragmentIons.Name = "cbFragmentIons";
@@ -152,23 +155,27 @@
             this.pBLogo.TabIndex = 22;
             this.pBLogo.TabStop = false;
             // 
-            // clbFixedModifs
+            // searchEngines
             // 
-            this.clbFixedModifs.FormattingEnabled = true;
-            this.clbFixedModifs.HorizontalScrollbar = true;
-            this.clbFixedModifs.Location = new System.Drawing.Point(13, 198);
-            this.clbFixedModifs.Name = "clbFixedModifs";
-            this.clbFixedModifs.Size = new System.Drawing.Size(207, 94);
-            this.clbFixedModifs.TabIndex = 6;
+            this.searchEngines.FormattingEnabled = true;
+            this.searchEngines.HorizontalScrollbar = true;
+            this.searchEngines.Items.AddRange(new object[] {
+            "MS Amanda",
+            "MS-GF+"});
+            this.searchEngines.Location = new System.Drawing.Point(13, 198);
+            this.searchEngines.Name = "searchEngines";
+            this.searchEngines.Size = new System.Drawing.Size(96, 34);
+            this.searchEngines.TabIndex = 6;
+            this.searchEngines.ItemCheck += new System.Windows.Forms.ItemCheckEventHandler(this.searchEngines_ItemCheck);
             // 
-            // lblFixedModifications
+            // searchEngineLabel
             // 
-            this.lblFixedModifications.AutoSize = true;
-            this.lblFixedModifications.Location = new System.Drawing.Point(16, 182);
-            this.lblFixedModifications.Name = "lblFixedModifications";
-            this.lblFixedModifications.Size = new System.Drawing.Size(99, 13);
-            this.lblFixedModifications.TabIndex = 24;
-            this.lblFixedModifications.Text = "Fixed modifications:";
+            this.searchEngineLabel.AutoSize = true;
+            this.searchEngineLabel.Location = new System.Drawing.Point(16, 182);
+            this.searchEngineLabel.Name = "searchEngineLabel";
+            this.searchEngineLabel.Size = new System.Drawing.Size(79, 13);
+            this.searchEngineLabel.TabIndex = 24;
+            this.searchEngineLabel.Text = "Search engine:";
             // 
             // flowLayoutPanel1
             // 
@@ -204,8 +211,8 @@
             this.Controls.Add(this.label3);
             this.Controls.Add(this.label1);
             this.Controls.Add(this.flowLayoutPanel1);
-            this.Controls.Add(this.lblFixedModifications);
-            this.Controls.Add(this.clbFixedModifs);
+            this.Controls.Add(this.searchEngineLabel);
+            this.Controls.Add(this.searchEngines);
             this.Controls.Add(this.pBLogo);
             this.Controls.Add(this.btnAdditionalSettings);
             this.Controls.Add(this.cbFragmentIons);
@@ -239,8 +246,8 @@
         private System.Windows.Forms.Label lblSearchEngineName;
         private System.Windows.Forms.Label label2;
         private System.Windows.Forms.PictureBox pBLogo;
-        private System.Windows.Forms.CheckedListBox clbFixedModifs;
-        private System.Windows.Forms.Label lblFixedModifications;
+        private System.Windows.Forms.CheckedListBox searchEngines;
+        private System.Windows.Forms.Label searchEngineLabel;
         private System.Windows.Forms.FlowLayoutPanel flowLayoutPanel1;
         private System.Windows.Forms.Label label1;
         private System.Windows.Forms.Label label3;

@@ -498,6 +498,7 @@
     <Compile Include="Model\MSAmanda\MSAmandaSearchSettings.cs" />
     <Compile Include="Model\MSAmanda\MSAmandaSearchWrapper.cs" />
     <Compile Include="Model\MSAmanda\MSAmandaSpectrumParser.cs" />
+    <Compile Include="Model\MsgfPlusSearchEngine.cs" />
     <Compile Include="Model\Optimization\OptimizationDictionary.cs" />
     <Compile Include="Model\Prosit\Config\PrositConfig.cs" />
     <Compile Include="Model\Prosit\Models\PrositIntensityModel.cs" />
