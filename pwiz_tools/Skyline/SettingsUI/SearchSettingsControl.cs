@@ -57,11 +57,15 @@ namespace pwiz.Skyline.SettingsUI
         //    }
         //}
 
-        public SearchSettingsControl(IModifyDocumentContainer documentContainer,ImportPeptideSearch importPeptideSearch)
+        public SearchSettingsControl(IModifyDocumentContainer documentContainer, ImportPeptideSearch importPeptideSearch)
         {
             InitializeComponent();
             ImportPeptideSearch = importPeptideSearch;
             _documentContainer = documentContainer;
+        }
+
+        public void InitializeEngine()
+        {
             lblSearchEngineName.Text = ImportPeptideSearch.SearchEngine.EngineName;
 
             LoadComboboxEntries();

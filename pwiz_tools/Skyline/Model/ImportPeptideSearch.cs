@@ -53,7 +53,7 @@ namespace pwiz.Skyline.Model
         public double CutoffScore { get; set; }
         public Library DocLib { get; private set; }
         public Dictionary<string, FoundResultsFilePossibilities> SpectrumSourceFiles { get; set; }
-        public AbstractDdaSearchEngine SearchEngine { get; set; } = new MSAmandaSearchWrapper();
+        public AbstractDdaSearchEngine SearchEngine { get; set; }
 
         public bool HasDocLib { get { return DocLib != null; } }
         public IrtStandard IrtStandard { get; set; }
