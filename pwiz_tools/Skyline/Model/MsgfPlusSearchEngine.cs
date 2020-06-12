@@ -114,7 +114,7 @@ namespace pwiz.Skyline.Model
             return true;
         }
 
-        public override void SaveModifications(Dictionary<StaticMod, bool> fixedAndVariableModifs)
+        public override void SaveModifications(IList<StaticMod> fixedAndVariableModifs)
         {
             /*  # Mass or CompositionStr, Residues, ModType, Position, Name (all the five fields are required).
                 # CompositionStr (C[Num]H[Num]N[Num]O[Num]S[Num]P[Num]Br[Num]Cl[Num]Fe[Num])
@@ -145,11 +145,11 @@ namespace pwiz.Skyline.Model
                 modsFileStream.WriteLine($@"NumMods={maxVariableMods}");
                 foreach (var mod in fixedAndVariableModifs)
                 {
-                    string composition = mod.Key.Formula ?? mod.Key.MonoisotopicMass.ToString();
-                    string residues = mod.Key.AAs ?? @"*";
-                    string modType = mod.Key.IsVariable ? @"opt" : @"fix";
+                    string composition = mod.Formula ?? mod.MonoisotopicMass.ToString();
+                    string residues = mod.AAs ?? @"*";
+                    string modType = mod.IsVariable ? @"opt" : @"fix";
                     string position = @"any";
-                    switch (mod.Key.Terminus)
+                    switch (mod.Terminus)
                     {
                         case ModTerminus.N:
                             position = @"N-term";
@@ -159,7 +159,7 @@ namespace pwiz.Skyline.Model
                             break;
                     }
 
-                    string name = mod.Key.ShortName;
+                    string name = mod.ShortName;
 
                     modsFileStream.WriteLine($@"{composition},{residues},{modType},{position},{name}");
                 }

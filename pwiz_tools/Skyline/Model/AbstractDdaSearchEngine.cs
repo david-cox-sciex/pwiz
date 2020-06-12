@@ -46,7 +46,7 @@ namespace pwiz.Skyline.Model
             FastaFileNames = new string[] {fastFile};
         }
 
-        public abstract void SaveModifications(Dictionary<StaticMod, bool> fixedAndVariableModifs);
+        public abstract void SaveModifications(IList<StaticMod> modifications);
 
     }
 }

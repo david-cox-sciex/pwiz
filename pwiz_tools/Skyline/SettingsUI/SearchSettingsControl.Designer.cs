@@ -40,8 +40,6 @@
             this.lblSearchEngineName = new System.Windows.Forms.Label();
             this.label2 = new System.Windows.Forms.Label();
             this.pBLogo = new System.Windows.Forms.PictureBox();
-            this.searchEngines = new System.Windows.Forms.CheckedListBox();
-            this.searchEngineLabel = new System.Windows.Forms.Label();
             this.flowLayoutPanel1 = new System.Windows.Forms.FlowLayoutPanel();
             this.label1 = new System.Windows.Forms.Label();
             this.label3 = new System.Windows.Forms.Label();
@@ -155,28 +153,6 @@
             this.pBLogo.TabIndex = 22;
             this.pBLogo.TabStop = false;
             // 
-            // searchEngines
-            // 
-            this.searchEngines.FormattingEnabled = true;
-            this.searchEngines.HorizontalScrollbar = true;
-            this.searchEngines.Items.AddRange(new object[] {
-            "MS Amanda",
-            "MS-GF+"});
-            this.searchEngines.Location = new System.Drawing.Point(13, 198);
-            this.searchEngines.Name = "searchEngines";
-            this.searchEngines.Size = new System.Drawing.Size(96, 34);
-            this.searchEngines.TabIndex = 6;
-            this.searchEngines.ItemCheck += new System.Windows.Forms.ItemCheckEventHandler(this.searchEngines_ItemCheck);
-            // 
-            // searchEngineLabel
-            // 
-            this.searchEngineLabel.AutoSize = true;
-            this.searchEngineLabel.Location = new System.Drawing.Point(16, 182);
-            this.searchEngineLabel.Name = "searchEngineLabel";
-            this.searchEngineLabel.Size = new System.Drawing.Size(79, 13);
-            this.searchEngineLabel.TabIndex = 24;
-            this.searchEngineLabel.Text = "Search engine:";
-            // 
             // flowLayoutPanel1
             // 
             this.flowLayoutPanel1.Controls.Add(this.lblSearchEngineName);
@@ -211,8 +187,6 @@
             this.Controls.Add(this.label3);
             this.Controls.Add(this.label1);
             this.Controls.Add(this.flowLayoutPanel1);
-            this.Controls.Add(this.searchEngineLabel);
-            this.Controls.Add(this.searchEngines);
             this.Controls.Add(this.pBLogo);
             this.Controls.Add(this.btnAdditionalSettings);
             this.Controls.Add(this.cbFragmentIons);
@@ -246,8 +220,6 @@
         private System.Windows.Forms.Label lblSearchEngineName;
         private System.Windows.Forms.Label label2;
         private System.Windows.Forms.PictureBox pBLogo;
-        private System.Windows.Forms.CheckedListBox searchEngines;
-        private System.Windows.Forms.Label searchEngineLabel;
         private System.Windows.Forms.FlowLayoutPanel flowLayoutPanel1;
         private System.Windows.Forms.Label label1;
         private System.Windows.Forms.Label label3;

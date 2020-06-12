@@ -432,6 +432,7 @@ namespace pwiz.Skyline.FileUI.PeptideSearch
                         
                         if (BuildPepSearchLibControl.PerformDDASearch) {
                             lblFasta.Text = Resources.ImportPeptideSearchDlg_NextPage_Import_FASTA__required_;
+                            _pagesToSkip.Add(Pages.chromatograms_page);
                         } else if (FastaOptional)
                             lblFasta.Text = Resources.ImportPeptideSearchDlg_NextPage_Import_FASTA__optional_;
                         

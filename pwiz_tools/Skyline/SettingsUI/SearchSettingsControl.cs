@@ -78,24 +78,6 @@ namespace pwiz.Skyline.SettingsUI
 
         public void LoadModifications()
         {
-            //
-            List<string> checkedItemNames = new List<string>();
-            foreach (var elem in searchEngines.CheckedItems)
-            {
-                checkedItemNames.Add(((MatchModificationsControl.ListBoxModification)elem).ToString());
-            }
-            searchEngines.Items.Clear();
-            foreach (var mod in _documentContainer.Document.Settings.PeptideSettings.Modifications.StaticModifications)
-            {
-                MatchModificationsControl.ListBoxModification modi =
-                    new MatchModificationsControl.ListBoxModification(mod);
-                if (checkedItemNames.Contains(modi.ToString()) || !modi.Mod.IsVariable)
-                    searchEngines.Items.Add(modi, CheckState.Checked);
-                else
-                    searchEngines.Items.Add(modi, CheckState.Unchecked);
-
-            }
-
             ///clbFixedModifs.Items.AddRange(_documentContainer.Document.Settings.PeptideSettings.Modifications.StaticModifications.Select(m => m.).ToArray());
         }
 
@@ -157,7 +139,7 @@ namespace pwiz.Skyline.SettingsUI
        
         public bool SaveAllSettings()
         {
-            var checkedItems = searchEngines.CheckedItems.Cast<string>().ToList();
+            //var checkedItems = searchEngines.CheckedItems.Cast<string>().ToList();
 
             bool valid = ValidateEntries();
             if (!valid)
@@ -168,8 +150,8 @@ namespace pwiz.Skyline.SettingsUI
                 fixedAndVariableModifs.Add(
                     ((MatchModificationsControl.ListBoxModification) searchEngines.Items[i]).Mod,
                     searchEngines.GetItemCheckState(i) == CheckState.Checked);
-            }
-            ImportPeptideSearch.SearchEngine.SaveModifications(fixedAndVariableModifs);*/
+            }*/
+            ImportPeptideSearch.SearchEngine.SaveModifications(_documentContainer.Document.Settings.PeptideSettings.Modifications.StaticModifications);
             return true;
         }
 
@@ -206,16 +188,27 @@ namespace pwiz.Skyline.SettingsUI
             return true;
         }
 
-        private bool uncheckingAll = false;
-        private void searchEngines_ItemCheck(object sender, ItemCheckEventArgs e)
+        public void SetPrecursorTolerance(MzTolerance tolerance)
         {
-            if (!uncheckingAll)
-            {
-                uncheckingAll = true;
-                for (int i = 0; i < searchEngines.Items.Count; ++i)
-                    searchEngines.SetItemChecked(i, false);
-                uncheckingAll = false;
-            }
+            txtMS1Tolerance.Text = tolerance.Value.ToString();
+            cbMS1TolUnit.SelectedIndex = (int) tolerance.Unit;
+            ImportPeptideSearch.SearchEngine.SetPrecursorMassTolerance(tolerance);
+        }
+
+        public void SetFragmentTolerance(MzTolerance tolerance)
+        {
+            txtMS2Tolerance.Text = tolerance.Value.ToString();
+            cbMS2TolUnit.SelectedIndex = (int) tolerance.Unit;
+            ImportPeptideSearch.SearchEngine.SetFragmentIonMassTolerance(tolerance);
+        }
+
+        public void SetFragmentIons(string fragmentIons)
+        {
+            int i = cbFragmentIons.Items.IndexOf(fragmentIons);
+            if (i < 0)
+                throw new ArgumentException("fragmentIons value not found in ComboBox items");
+            cbFragmentIons.SelectedIndex = i;
+            ImportPeptideSearch.SearchEngine.SetFragmentIons(fragmentIons);
         }
     }
     

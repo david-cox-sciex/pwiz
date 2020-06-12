@@ -16,6 +16,7 @@ using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Util;
 using MSAmandaEnzyme = MSAmanda.Utils.Enzyme;
 using AmandaSettings = MSAmanda.InOutput.Settings;
+using OperationCanceledException = System.OperationCanceledException;
 using Thread = System.Threading.Thread;
 
 namespace pwiz.Skyline.Model.MSAmanda
@@ -65,11 +66,11 @@ namespace pwiz.Skyline.Model.MSAmanda
             AvailableSettings = new SettingsFile(helper, Settings, mzID);
             AvailableSettings.AllEnzymes = new List<MSAmandaEnzyme>();
             AvailableSettings.AllModifications = new List<Modification>();
-            AvailableSettings.ParseEnzymeFile(ENZYME_FILENAME, "", AvailableSettings.AllEnzymes);
-            AvailableSettings.ParseUnimodFile(UNIMOD_FILENAME, AvailableSettings.AllModifications);
-            AvailableSettings.ParseOboFiles();
-            AvailableSettings.ReadInstrumentsFile(INSTRUMENTS_FILENAME);
-            
+            if (!AvailableSettings.ParseEnzymeFile(ENZYME_FILENAME, "", AvailableSettings.AllEnzymes)) throw new Exception($"enzymes file '{ENZYME_FILENAME}' not found");
+            if (!AvailableSettings.ParseUnimodFile(UNIMOD_FILENAME, AvailableSettings.AllModifications)) throw new Exception($"unimod file '{UNIMOD_FILENAME}' not found");
+            if (!AvailableSettings.ParseOboFiles()) throw new Exception($"obo files (psi-ms.obo and unimod.obo) not found");
+            if (!AvailableSettings.ReadInstrumentsFile(INSTRUMENTS_FILENAME)) throw new Exception($"instruments file '{INSTRUMENTS_FILENAME}' not found");
+
         }
 
         private void Helper_SearchProgressChanged(string message)
@@ -91,16 +92,6 @@ namespace pwiz.Skyline.Model.MSAmanda
             }
         }
 
-       
-
-        public void SetTolerance(MzTolerance tol, bool isMS1)
-        {
-            Tolerance tolerance = new Tolerance(tol.Value, (MassUnit) tol.Unit);
-            if (isMS1)
-                Settings.Ms1Tolerance = tolerance;
-            else
-                Settings.Ms2Tolerance = tolerance;
-        }
 
         public override string[] FragmentIons
         {
@@ -114,12 +105,12 @@ namespace pwiz.Skyline.Model.MSAmanda
 
         public override void SetPrecursorMassTolerance(MzTolerance tol)
         {
-            SetTolerance(tol, true);
+            Settings.Ms1Tolerance = new Tolerance(tol.Value, (MassUnit) tol.Unit);
         }
 
         public override void SetFragmentIonMassTolerance(MzTolerance tol)
         {
-            SetTolerance(tol, false);
+            Settings.Ms2Tolerance = new Tolerance(tol.Value, (MassUnit)tol.Unit);
         }
 
         public override void SetFragmentIons(string ions)
@@ -130,7 +121,7 @@ namespace pwiz.Skyline.Model.MSAmanda
             }
         }
 
-        private MSAmandaEngine amandaSearchEngine;
+        //private MSAmandaEngine amandaSearchEngine;
 
         private List<FastaDBFile> GetFastaFileList()
         {
@@ -150,6 +141,7 @@ namespace pwiz.Skyline.Model.MSAmanda
         private void InitializeEngine(CancellationTokenSource token, string spectrumFileName)
         {
             _outputParameters = new OutputParameters();
+            _outputParameters.FastaFiles = FastaFileNames.ToList();
             _outputParameters.DBFile = FastaFileNames[0];
             //_outputParameters.IsMzOutput = true;
             //2 == mzid
@@ -224,29 +216,38 @@ namespace pwiz.Skyline.Model.MSAmanda
         {
             try
             {
-                
+
                 List<Spectrum> spectra = new List<Spectrum>();
                 foreach (string rawFileName in SpectrumFileNames)
                 {
                     tokenSource.Token.ThrowIfCancellationRequested();
 
-                    InitializeEngine(tokenSource, rawFileName);
+                    try
+                    {
+                        InitializeEngine(tokenSource, rawFileName);
 
-                    amandaInputParser = new MSAmandaSpectrumParser(rawFileName, Settings.ConsideredCharges, true);
-                    SearchEngine.SetInputParser(amandaInputParser);
+                        amandaInputParser = new MSAmandaSpectrumParser(rawFileName, Settings.ConsideredCharges, true);
+                        SearchEngine.SetInputParser(amandaInputParser);
 
-                    SearchEngine.PerformSearch(_outputParameters.DBFile);
-                    //Dictionary<int, SpectrumMatchesCollection> result = amandaSearchEngine.PerformSearch(spectra);
-                    //WriteResults(result);
-
-
+                        SearchEngine.PerformSearch(_outputParameters.DBFile);
+                        //Dictionary<int, SpectrumMatchesCollection> result = amandaSearchEngine.PerformSearch(spectra);
+                        //WriteResults(result);
+                    }
+                    finally
+                    {
+                        SearchEngine.Dispose();
+                    }
                 }
 
             }
+            catch (OperationCanceledException)
+            {
+                helper.WriteMessage("Search is being canceled", true);
+                success = false;
+            }
             catch (Exception ex)
             {
-        SearchEngine.Dispose();
-                helper.WriteMessage("Search is being canceled", true);
+                helper.WriteMessage($"Search failed: {ex.Message}", true);
                 success = false;
             }
 
@@ -254,30 +255,28 @@ namespace pwiz.Skyline.Model.MSAmanda
                 success = false;
             
             return success;
-           
-
         }
 
         
 
         
 
-        public override void SaveModifications(Dictionary<StaticMod, bool> fixedAndVariableModifs)
+        public override void SaveModifications(IList<StaticMod> modifications)
         {
             Settings.SelectedModifications.Clear();
-            foreach (var item in fixedAndVariableModifs)
+            foreach (var item in modifications)
             {
-                string name = item.Key.Name.Split(' ')[0];
+                string name = item.Name.Split(' ')[0];
                 var elemsFromUnimod = AvailableSettings.AllModifications.FindAll(m => m.Title == name);
                 if (elemsFromUnimod.Count> 0)
                 {
-                    foreach (char aa in item.Key.AminoAcids)
+                    foreach (char aa in item.AminoAcids)
                     {
                         var elem = elemsFromUnimod.Find(m => m.AA == aa);
                         if (elem != null)
                         {
                             Modification modClone = new Modification(elem);
-                            modClone.Fixed = item.Value;
+                            modClone.Fixed = item.IsVariable;
                             Settings.SelectedModifications.Add(modClone);
                         }
                         else

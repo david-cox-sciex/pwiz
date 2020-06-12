@@ -76,8 +76,6 @@ namespace pwiz.SkylineTestFunctional
             TestWizardDecoysAndMinPeptides();
             TestIrts();
             TestMinIonCount();
-
-            TestAmandaSearch();
         }
 
         /// <summary>
@@ -700,103 +698,6 @@ namespace pwiz.SkylineTestFunctional
 
             RunUI(() => SkylineWindow.SaveDocument());
         }
-
-
-        /// <summary>
-        /// Test that the "Match Modifications" page of the Import Peptide Search wizard gets skipped.
-        /// </summary>
-        private void TestAmandaSearch()
-        {
-            PrepareDocument("ImportPeptideSearchTest.sky");
-
-            // Launch the wizard
-            var importPeptideSearchDlg = ShowDialog<ImportPeptideSearchDlg>(SkylineWindow.ShowImportPeptideSearchDlg);
-
-            // We're on the "Build Spectral Library" page of the wizard.
-            // Add the test xml file to the search files list and try to 
-            // build the document library.
-            SrmDocument doc = SkylineWindow.Document;
-
-            RunUI(() =>
-            {
-                Assert.IsTrue(importPeptideSearchDlg.CurrentPage == ImportPeptideSearchDlg.Pages.spectra_page);
-                importPeptideSearchDlg.BuildPepSearchLibControl.PerformDDASearch = true;
-                importPeptideSearchDlg.BuildPepSearchLibControl.AddSearchFiles(SearchFilesModless);
-                Assert.AreEqual(ImportPeptideSearchDlg.Workflow.dda, importPeptideSearchDlg.BuildPepSearchLibControl.WorkflowType);
-                Assert.IsTrue(importPeptideSearchDlg.ClickNextButton());
-            });
-            WaitForDocumentChange(doc);
-
-            // We're on the "Extract Chromatograms" page of the wizard.
-            // All the test results files are in the same directory as the 
-            // document file, so all the files should be found, and we should
-            // just be able to move to the next page.
-            // TODO: DDA searches should not look for result files (for DDA, the result files are the same as the search input, and for DIA, I'm not sure yet)
-            RunUI(() =>
-            {
-                Assert.IsTrue(importPeptideSearchDlg.CurrentPage == ImportPeptideSearchDlg.Pages.chromatograms_page);
-                Assert.IsTrue(importPeptideSearchDlg.ClickNextButton());
-            });
-
-            // We're on the "Match Modifications" page. Select C57 and M16
-            RunUI(() =>
-            {
-                Assert.IsTrue(importPeptideSearchDlg.CurrentPage == ImportPeptideSearchDlg.Pages.match_modifications_page);
-                importPeptideSearchDlg.ClickNextButton();
-            });
-            WaitForDocumentChange(doc);
-
-            // We're on the MS1 full scan settings page.
-            RunUI(() =>
-            {
-                Assert.IsTrue(importPeptideSearchDlg.CurrentPage == ImportPeptideSearchDlg.Pages.full_scan_settings_page);
-                importPeptideSearchDlg.ClickNextButton();
-            });
-            WaitForDocumentChange(doc);
-
-            // We're on the "Import FASTA" page.
-            RunUI(() =>
-            {
-                Assert.IsTrue(importPeptideSearchDlg.CurrentPage == ImportPeptideSearchDlg.Pages.import_fasta_page);
-                Assert.IsFalse(importPeptideSearchDlg.ImportFastaControl.DecoyGenerationEnabled);
-                importPeptideSearchDlg.ImportFastaControl.SetFastaContent(GetTestPath("yeast-10.fasta"));
-            });
-
-            // Finish wizard and have empty proteins dialog come up. Only 1 out of the 10 proteins had a match.
-            // Cancel the empty proteins dialog.
-            RunDlg<PeptidesPerProteinDlg>(importPeptideSearchDlg.ClickNextButtonNoCheck, emptyProteinsDlg =>
-            {
-                int proteinCount, peptideCount, precursorCount, transitionCount;
-                emptyProteinsDlg.NewTargetsAll(out proteinCount, out peptideCount, out precursorCount, out transitionCount);
-                Assert.AreEqual(10, proteinCount);
-                Assert.AreEqual(1, peptideCount);
-                Assert.AreEqual(1, precursorCount);
-                Assert.AreEqual(3, transitionCount);
-                emptyProteinsDlg.NewTargetsFinalSync(out proteinCount, out peptideCount, out precursorCount, out transitionCount);
-                Assert.AreEqual(1, proteinCount);
-                Assert.AreEqual(1, peptideCount);
-                Assert.AreEqual(1, precursorCount);
-                Assert.AreEqual(3, transitionCount);
-                emptyProteinsDlg.CancelDialog();
-            });
-
-            // Set empty protein discard notice to appear if there are > 5, and retry finishing the wizard.
-            using (new EmptyProteinGroupSetter(5))
-            {
-                RunUI(() => importPeptideSearchDlg.ImportFastaControl.SetFastaContent(GetTestPath("yeast-9.fasta")));
-                RunDlg<MessageDlg>(importPeptideSearchDlg.ClickNextButtonNoCheck, discardNotice =>
-                {
-                    Assert.AreEqual(Resources.ImportFastaControl_ImportFasta_Importing_the_FASTA_did_not_create_any_target_proteins_, discardNotice.Message);
-                    discardNotice.OkDialog();
-                });
-            }
-
-            RunUI(importPeptideSearchDlg.CancelDialog);
-            WaitForClosedForm(importPeptideSearchDlg);
-
-            RunUI(() => SkylineWindow.SaveDocument());
-        }
-
 
         private void VerifyDocumentLibraryBuilt(string path)
         {
