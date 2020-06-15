@@ -1,21 +1,20 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
-using System.Threading.Tasks;
-using EnvDTE;
 using MSAmanda.Core;
 using MSAmanda.Utils;
 using MSAmanda.InOutput;
 using MSAmanda.InOutput.Output;
 using pwiz.Common.Chemistry;
-using pwiz.ProteowizardWrapper;
+using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Model.DocSettings;
-using pwiz.Skyline.Util;
 using MSAmandaEnzyme = MSAmanda.Utils.Enzyme;
-using AmandaSettings = MSAmanda.InOutput.Settings;
+//using AmandaSettings = MSAmanda.InOutput.Settings;
 using OperationCanceledException = System.OperationCanceledException;
 using Thread = System.Threading.Thread;
 
@@ -52,7 +51,8 @@ namespace pwiz.Skyline.Model.MSAmanda
         private readonly string _baseDir = "C:\\ProgramData\\MSAmanda2.0";
         #endregion
 
-        public MSAmandaSearchWrapper(){
+        public MSAmandaSearchWrapper()
+        {
             if (!helper.IsInitialized())
             {
                 helper.InitLogWriter(_baseDir);
@@ -66,10 +66,14 @@ namespace pwiz.Skyline.Model.MSAmanda
             AvailableSettings = new SettingsFile(helper, Settings, mzID);
             AvailableSettings.AllEnzymes = new List<MSAmandaEnzyme>();
             AvailableSettings.AllModifications = new List<Modification>();
-            if (!AvailableSettings.ParseEnzymeFile(ENZYME_FILENAME, "", AvailableSettings.AllEnzymes)) throw new Exception($"enzymes file '{ENZYME_FILENAME}' not found");
-            if (!AvailableSettings.ParseUnimodFile(UNIMOD_FILENAME, AvailableSettings.AllModifications)) throw new Exception($"unimod file '{UNIMOD_FILENAME}' not found");
-            if (!AvailableSettings.ParseOboFiles()) throw new Exception($"obo files (psi-ms.obo and unimod.obo) not found");
-            if (!AvailableSettings.ReadInstrumentsFile(INSTRUMENTS_FILENAME)) throw new Exception($"instruments file '{INSTRUMENTS_FILENAME}' not found");
+
+            using (var d = new CurrentDirectorySetter(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)))
+            {
+                if (!AvailableSettings.ParseEnzymeFile(ENZYME_FILENAME, "", AvailableSettings.AllEnzymes)) throw new Exception($"enzymes file '{ENZYME_FILENAME}' not found");
+                if (!AvailableSettings.ParseUnimodFile(UNIMOD_FILENAME, AvailableSettings.AllModifications)) throw new Exception($"unimod file '{UNIMOD_FILENAME}' not found");
+                if (!AvailableSettings.ParseOboFiles()) throw new Exception($"obo files (psi-ms.obo and unimod.obo) not found");
+                if (!AvailableSettings.ReadInstrumentsFile(INSTRUMENTS_FILENAME)) throw new Exception($"instruments file '{INSTRUMENTS_FILENAME}' not found");
+            }
 
         }
 
@@ -97,7 +101,7 @@ namespace pwiz.Skyline.Model.MSAmanda
         {
             get { return Settings.ChemicalData.Instruments.Keys.ToArray(); }
         }
-        public override string EngineName { get { return "MS Amanda"; } }
+        public override string EngineName { get { return @"MS Amanda"; } }
         public override Bitmap SearchEngineLogo
         {
             get { return Properties.Resources.MSAmandaLogo; }
@@ -216,29 +220,30 @@ namespace pwiz.Skyline.Model.MSAmanda
         {
             try
             {
-
-                List<Spectrum> spectra = new List<Spectrum>();
-                foreach (string rawFileName in SpectrumFileNames)
+                using (var c = new CurrentCultureSetter(CultureInfo.InvariantCulture))
                 {
-                    tokenSource.Token.ThrowIfCancellationRequested();
-
-                    try
+                    List<Spectrum> spectra = new List<Spectrum>();
+                    foreach (string rawFileName in SpectrumFileNames)
                     {
-                        InitializeEngine(tokenSource, rawFileName);
+                        tokenSource.Token.ThrowIfCancellationRequested();
 
-                        amandaInputParser = new MSAmandaSpectrumParser(rawFileName, Settings.ConsideredCharges, true);
-                        SearchEngine.SetInputParser(amandaInputParser);
+                        try
+                        {
+                            InitializeEngine(tokenSource, rawFileName);
 
-                        SearchEngine.PerformSearch(_outputParameters.DBFile);
-                        //Dictionary<int, SpectrumMatchesCollection> result = amandaSearchEngine.PerformSearch(spectra);
-                        //WriteResults(result);
-                    }
-                    finally
-                    {
-                        SearchEngine.Dispose();
+                            amandaInputParser = new MSAmandaSpectrumParser(rawFileName, Settings.ConsideredCharges, true);
+                            SearchEngine.SetInputParser(amandaInputParser);
+
+                            SearchEngine.PerformSearch(_outputParameters.DBFile);
+                            //Dictionary<int, SpectrumMatchesCollection> result = amandaSearchEngine.PerformSearch(spectra);
+                            //WriteResults(result);
+                        }
+                        finally
+                        {
+                            SearchEngine.Dispose();
+                        }
                     }
                 }
-
             }
             catch (OperationCanceledException)
             {
