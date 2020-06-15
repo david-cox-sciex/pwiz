@@ -164,7 +164,7 @@ namespace pwiz.SkylineTestFunctional
                 importPeptideSearchDlg.BuildPepSearchLibControl.IncludeAmbiguousMatches = true;
             });
 
-            WaitForConditionUI(() => searchSucceeded.HasValue);
+            WaitForConditionUI(60000, () => searchSucceeded.HasValue);
             Assert.IsTrue(searchSucceeded.Value);
 
             RunDlg<PeptidesPerProteinDlg>(importPeptideSearchDlg.ClickNextButtonNoCheck, emptyProteinsDlg =>
