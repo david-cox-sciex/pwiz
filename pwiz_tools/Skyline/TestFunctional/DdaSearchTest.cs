@@ -186,7 +186,8 @@ namespace pwiz.SkylineTestFunctional
 
             //RunUI(importPeptideSearchDlg.CancelDialog);
 
-            WaitForClosedForm(importPeptideSearchDlg);
+            //WaitForClosedForm(importPeptideSearchDlg);
+            WaitForDocumentLoaded();
             RunUI(() => SkylineWindow.SaveDocument());
         }
 
