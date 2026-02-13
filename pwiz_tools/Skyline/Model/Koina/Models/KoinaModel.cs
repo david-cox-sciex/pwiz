@@ -602,14 +602,11 @@ namespace pwiz.Skyline.Model.Koina.Models
                         var iRT = RTModel.PredictSingle(Client,
                             Settings,
                             Peptide, _tokenSource.Token);
-                        double? retentionTime = iRT.TryGetValue(Peptide, out var iRTValue)
-                            ? iRTValue
-                            : (double?)null;
                         Spectrum = new SpectrumDisplayInfo(
                             new SpectrumInfoKoina(massSpectrum, Precursor, labelType, NCE),
                             // ReSharper disable once AssignNullToNotNullAttribute
                             Precursor,
-                            retentionTime);
+                            iRT[Peptide]);
                     }
                     catch (KoinaException ex)
                     {
@@ -619,10 +616,6 @@ namespace pwiz.Skyline.Model.Koina.Models
                         // so don't even update UI
                         if (ex.InnerException is RpcException rpcEx && rpcEx.StatusCode == StatusCode.Cancelled)
                             return;
-                    }
-                    catch (Exception ex)
-                    {
-                        Exception = new KoinaException(ex.Message, ex);
                     }
 
                     _updateCallback.Invoke();
