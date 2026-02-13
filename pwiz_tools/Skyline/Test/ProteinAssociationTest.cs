@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Nicholas Shulman <nicksh .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -16,13 +16,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-using System;
+
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
-using System.Windows.Forms;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using pwiz.Skyline.Model;
 using pwiz.Skyline.Model.DocSettings;
@@ -78,7 +77,7 @@ ADISMIGQFGVGFYSAYLVAEKVVVITKHNDDEQYAWESSAGGSFTVRADHGEPIGRGTK";
             var fastaProteinSource =
                 new ProteinAssociation.FastaSource(new MemoryStream(Encoding.UTF8.GetBytes(fastaFileText)));
 
-            var proteinAssociation = new ProteinAssociation(document, new LongWaitBrokerImpl());
+            var proteinAssociation = new ProteinAssociation(document, CancellationToken.None);
             proteinAssociation.UseProteinSource(fastaProteinSource, enzyme, new LongWaitBrokerImpl());
             return proteinAssociation.AssociatedProteins.ToDictionary(
                 kvp => kvp.Key.Sequence.Name, kvp => kvp.Value.Peptides.Select(p => p.Peptide.Sequence).ToList());
@@ -113,16 +112,11 @@ ADISMIGQFGVGFYSAYLVAEKVVVITKHNDDEQYAWESSAGGSFTVRADHGEPIGRGTK";
                 return false;
             }
 
-            public DialogResult ShowDialog(Func<IWin32Window, DialogResult> show)
-            {
-                throw new InvalidOperationException();
-            }
-
             public void SetProgressCheckCancel(int step, int totalSteps)
             {
             }
 
             public CancellationToken CancellationToken => CancellationToken.None;
         }
-}
+    }
 }

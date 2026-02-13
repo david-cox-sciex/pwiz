@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Viktoria Dorfer <viktoria.dorfer .at. fh-hagenberg.at>,
  *                  Bioinformatics Research Group, University of Applied Sciences Upper Austria
  *
@@ -28,7 +28,6 @@ using pwiz.Common.Controls;
 using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Alerts;
 using pwiz.Skyline.Controls;
-using pwiz.Skyline.Util;
 using pwiz.Skyline.Util.Extensions;
 
 namespace pwiz.Skyline.FileUI.PeptideSearch
@@ -260,6 +259,8 @@ namespace pwiz.Skyline.FileUI.PeptideSearch
                 Invoke(UpdateUI, status);
             }
         }
+
+        public bool CanCancel => btnCancel.Enabled;
 
         public void Cancel()
         {

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Brendan MacLean <brendanx .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -22,6 +22,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Data;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -29,7 +30,6 @@ using System.Reflection;
 using System.Text;
 using System.Xml;
 using System.Xml.Serialization;
-using Microsoft.Win32;
 using pwiz.CLI.Bruker.PrmScheduling;
 using pwiz.Common.SystemUtil;
 using pwiz.Common.SystemUtil.PInvoke;
@@ -41,13 +41,16 @@ using pwiz.Skyline.Properties;
 using pwiz.Skyline.Util;
 using pwiz.Skyline.Util.Extensions;
 using ZedGraph;
+using pwiz.CommonMsData.RemoteApi.WatersConnect;
 using Process = System.Diagnostics.Process;
 using Thread = System.Threading.Thread;
+using Newtonsoft.Json;
+using pwiz.Skyline.Model.WatersConnect;
 
 namespace pwiz.Skyline.Model
 {
 // ReSharper disable InconsistentNaming
-    public enum ExportStrategy { Single, Protein, Buckets }
+    public enum ExportStrategy { Single, Protein, Buckets, WcDecide }
     public static class ExportStrategyExtension
     {
         private static string[] LOCALIZED_VALUES
@@ -58,7 +61,8 @@ namespace pwiz.Skyline.Model
                 {
                     ModelResources.ExportStrategyExtension_LOCALIZED_VALUES_Single,
                     ModelResources.ExportStrategyExtension_LOCALIZED_VALUES_Protein,
-                    ModelResources.ExportStrategyExtension_LOCALIZED_VALUES_Buckets
+                    ModelResources.ExportStrategyExtension_LOCALIZED_VALUES_Buckets,
+                    ModelResources.ExportStrategyExtension_LOCALIZED_VALUES_WcDecide
                 };
             }
         }
@@ -186,19 +190,34 @@ namespace pwiz.Skyline.Model
         public const string BRUKER_TIMSTOF = "Bruker timsTOF";
         public const string SHIMADZU = "Shimadzu";
         public const string THERMO = "Thermo";
-        public const string THERMO_TSQ = "Thermo TSQ";
-        public const string THERMO_ENDURA = "Thermo Endura";
-        public const string THERMO_QUANTIVA = "Thermo Quantiva";
-        public const string THERMO_ALTIS = "Thermo Altis";
-        public const string THERMO_STELLAR = "Thermo Stellar";
-        public const string THERMO_FUSION = "Thermo Fusion";
-        public const string THERMO_LTQ = "Thermo LTQ";
-        public const string THERMO_Q_EXACTIVE = "Thermo Q Exactive";
-        public const string THERMO_EXPLORIS = "Thermo Exploris";
-        public const string THERMO_FUSION_LUMOS = "Thermo Fusion Lumos";
-        public const string THERMO_ECLIPSE = "Thermo Eclipse";
+        public const string THERMO_TSQ = "Thermo TSQ Vantage/Ultra"; // tsq
+        public const string THERMO_LTQ = "Thermo LTQ (legacy)";     // ltq
+        public const string THERMO_ENDURA = "Thermo Endura";        // tsq
+        public const string THERMO_ENDURA_REG = "TSQEndura";
+        public const string THERMO_QUANTIVA = "Thermo Quantiva";    // tsq
+        public const string THERMO_QUANTIVA_REG = "TSQQuantiva";
+        public const string THERMO_ALTIS = "Thermo Altis";          // tsq
+        public const string THERMO_ALTIS_REG = "TSQAltis";
+        public const string THERMO_STELLAR = "Thermo Stellar";      // q-ltq
+        public const string THERMO_STELLAR_REG = "Stellar";
+        public const string THERMO_Q_EXACTIVE = "Thermo Q Exactive"; // q-orbi - no method export, did not support TNG XML API
+        public const string THERMO_EXPLORIS = "Thermo Exploris";    // q-orbi
+        public const string THERMO_EXPLORIS_REG = "OrbitrapExploris480";    // CONSIDER: Other Exploris versions?
+        public const string THERMO_ASCEND = "Thermo Ascend";        // q-orbi
+        public const string THERMO_ASCEND_REG = "OrbitrapAscend";
+        public const string THERMO_FUSION = "Thermo Fusion";        // q-orbi/ltq
+        public const string THERMO_FUSION_REG = "OrbitrapFusion";
+        public const string THERMO_FUSION_LUMOS = "Thermo Fusion Lumos"; // q-orbi/ltq
+        public const string THERMO_FUSION_LUMOS_REG = "OrbitrapFusionLumos";
+        public const string THERMO_ECLIPSE = "Thermo Eclipse";      // q-orbe/ltq
+        public const string THERMO_ECLIPSE_REG = "OrbitrapEclipse";
+        public const string THERMO_ASTRAL = "Thermo Astral";        // q-orbi/tof
+        public const string THERMO_ASTRAL_REG = "OrbitrapAstral";
+        public const string THERMO_ASTRAL_ZOOM = "Thermo Astral Zoom";        // q-orbi/tof
+        public const string THERMO_ASTRAL_ZOOM_REG = "OrbitrapAstralZoom";
         public const string WATERS = "Waters";
-        public const string WATERS_XEVO_TQ = "Waters Xevo TQ";
+        public const string WATERS_XEVO_TQ_MASS_LYNX = "Waters TQ (MassLynx)"; // Export to local file
+        public const string WATERS_XEVO_TQ_WATERS_CONNECT = "Waters TQ (waters_connect)";  // Export to Remote Waters Connect
         public const string WATERS_XEVO_QTOF = "Waters Xevo QTOF";
         public const string WATERS_SYNAPT_TRAP = "Waters Synapt (trap)";
         public const string WATERS_SYNAPT_TRANSFER = "Waters Synapt (transfer)";
@@ -224,6 +243,7 @@ namespace pwiz.Skyline.Model
                 ABI_7500,
                 ABI_7600,
                 SHIMADZU,
+                THERMO,
                 THERMO_TSQ,
                 THERMO_LTQ,
                 THERMO_QUANTIVA,
@@ -233,8 +253,9 @@ namespace pwiz.Skyline.Model
                 THERMO_ECLIPSE,
                 THERMO_FUSION,
                 THERMO_FUSION_LUMOS,
-                WATERS_XEVO_TQ,
-                WATERS_QUATTRO_PREMIER,
+                WATERS_XEVO_TQ_MASS_LYNX,
+                WATERS_XEVO_TQ_WATERS_CONNECT,
+                WATERS_QUATTRO_PREMIER
             };
 
         public static readonly string[] TRANSITION_LIST_TYPES =
@@ -266,32 +287,53 @@ namespace pwiz.Skyline.Model
             };
 
         private static readonly Dictionary<string, string> METHOD_EXTENSIONS;
+        private static readonly Dictionary<string, string> THERMO_TYPE_TO_INSTALLATION_TYPE;
 
         static ExportInstrumentType()
         {
             METHOD_EXTENSIONS = new Dictionary<string, string>
-                                   {
-                                       {ABI_QTRAP, EXT_AB_SCIEX},
-                                       {ABI_TOF, EXT_AB_SCIEX},
-                                       {ABI_7500, EXT_SCIEX_OS},
-                                       {ABI_7600, EXT_SCIEX_OS},
-                                       {AGILENT6400, EXT_AGILENT},
-                                       {AGILENT_MASSHUNTER_12_METHOD, EXT_AGILENT},
-                                       {BRUKER_TOF, EXT_BRUKER},
-                                       {BRUKER_TIMSTOF, EXT_BRUKER_TIMSTOF},
-                                       {SHIMADZU, EXT_SHIMADZU},
-                                       {THERMO_TSQ, EXT_THERMO},
-                                       {THERMO_LTQ, EXT_THERMO},
-                                       {THERMO_QUANTIVA, EXT_THERMO},
-                                       {THERMO_ALTIS, EXT_THERMO},
-                                       {THERMO_EXPLORIS, EXT_THERMO},
-                                       {THERMO_ECLIPSE, EXT_THERMO},
-                                       {THERMO_FUSION, EXT_THERMO},
-                                       {THERMO_FUSION_LUMOS, EXT_THERMO},
-                                       {THERMO_STELLAR, EXT_THERMO},
-                                       {WATERS_XEVO_TQ, EXT_WATERS},
-                                       {WATERS_QUATTRO_PREMIER, EXT_WATERS}
-                                   };
+            {
+                { ABI_QTRAP, EXT_AB_SCIEX },
+                { ABI_TOF, EXT_AB_SCIEX },
+                { ABI_7500, EXT_SCIEX_OS },
+                { ABI_7600, EXT_SCIEX_OS },
+                { AGILENT6400, EXT_AGILENT },
+                { AGILENT_MASSHUNTER_12_METHOD, EXT_AGILENT },
+                { BRUKER_TOF, EXT_BRUKER },
+                { BRUKER_TIMSTOF, EXT_BRUKER_TIMSTOF },
+                { SHIMADZU, EXT_SHIMADZU },
+                { THERMO, EXT_THERMO },
+                { THERMO_TSQ, EXT_THERMO },
+                { THERMO_LTQ, EXT_THERMO },
+                { THERMO_ENDURA, EXT_THERMO },
+                { THERMO_QUANTIVA, EXT_THERMO },
+                { THERMO_ALTIS, EXT_THERMO },
+                { THERMO_STELLAR, EXT_THERMO },
+                { THERMO_EXPLORIS, EXT_THERMO },
+                { THERMO_ASCEND, EXT_THERMO },
+                { THERMO_FUSION, EXT_THERMO },
+                { THERMO_FUSION_LUMOS, EXT_THERMO },
+                { THERMO_ECLIPSE, EXT_THERMO },
+                { THERMO_ASTRAL, EXT_THERMO },
+                { THERMO_ASTRAL_ZOOM, EXT_THERMO },
+                { WATERS_XEVO_TQ_MASS_LYNX, EXT_WATERS },
+                { WATERS_QUATTRO_PREMIER, EXT_WATERS }
+            };
+
+            THERMO_TYPE_TO_INSTALLATION_TYPE = new Dictionary<string, string>
+            {
+                { THERMO_ENDURA, THERMO_ENDURA_REG },
+                { THERMO_QUANTIVA, THERMO_QUANTIVA_REG },
+                { THERMO_ALTIS, THERMO_ALTIS_REG },
+                { THERMO_STELLAR, THERMO_STELLAR_REG },
+                { THERMO_FUSION, THERMO_FUSION_REG },
+                { THERMO_EXPLORIS, THERMO_EXPLORIS_REG },
+                { THERMO_FUSION_LUMOS, THERMO_FUSION_LUMOS_REG },
+                { THERMO_ECLIPSE, THERMO_ECLIPSE_REG },
+                { THERMO_ASTRAL, THERMO_ASTRAL_REG },
+                { THERMO_ASTRAL_ZOOM, THERMO_ASTRAL_ZOOM_REG },
+                { THERMO_ASCEND, THERMO_ASCEND_REG },
+            };
         }
 
         public static string TransitionListExtension(string instrument)
@@ -335,12 +377,34 @@ namespace pwiz.Skyline.Model
             return METHOD_EXTENSIONS.TryGetValue(instrument, out ext) ? ext : null;
         }
 
+        public static string ThermoInstallationType(string instrument)
+        {
+            string installationType;
+            return THERMO_TYPE_TO_INSTALLATION_TYPE.TryGetValue(instrument, out installationType) ? installationType : null;
+        }
+
+        public static string ThermoTypeFromInstallationType(string installationType)
+        {
+            foreach (var typeToInstallationType in THERMO_TYPE_TO_INSTALLATION_TYPE)
+            {
+                if (Equals(installationType, typeToInstallationType.Value))
+                    return typeToInstallationType.Key;
+            }
+            return null;
+        }
+
         public static bool IsFullScanInstrumentType(string type)
         {
             return Equals(type, THERMO_LTQ) ||
-                   Equals(type, THERMO_Q_EXACTIVE) ||
-                   Equals(type, THERMO_FUSION) ||
                    Equals(type, THERMO_STELLAR) ||
+                   Equals(type, THERMO_Q_EXACTIVE) ||
+                   Equals(type, THERMO_EXPLORIS) ||
+                   Equals(type, THERMO_ASCEND) ||
+                   Equals(type, THERMO_FUSION) ||
+                   Equals(type, THERMO_FUSION_LUMOS) ||
+                   Equals(type, THERMO_ECLIPSE) ||
+                   Equals(type, THERMO_ASTRAL) ||
+                   Equals(type, THERMO_ASTRAL_ZOOM) ||
                    Equals(type, AGILENT_TOF) ||
                    Equals(type, WATERS_SYNAPT_TRAP) ||
                    Equals(type, WATERS_SYNAPT_TRANSFER) ||
@@ -378,10 +442,9 @@ namespace pwiz.Skyline.Model
                    Equals(type, AGILENT_MASSHUNTER_12_6495C) ||
                    Equals(type, THERMO) ||
                    Equals(type, ABI_QTRAP) ||
-                   Equals(type, ABI)
-                // TODO: TSQ Method writing API does not yet support triggered methods
-                // || Equals(type, THERMO_TSQ)
-                   ;
+                   Equals(type, ABI);
+            // TSQ Method writing API does not support triggered methods
+            // || Equals(type, THERMO_TSQ)
         }
 
         public static bool CanTrigger(string instrumentType, SrmDocument document, int? replicateIndex)
@@ -393,7 +456,8 @@ namespace pwiz.Skyline.Model
         public static bool IsSingleWindowInstrumentType(string type)
         {
             return Equals(type, WATERS) ||
-                   Equals(type, WATERS_XEVO_TQ) ||
+                   Equals(type, WATERS_XEVO_TQ_MASS_LYNX) ||
+                   Equals(type, WATERS_XEVO_TQ_WATERS_CONNECT) ||
                    Equals(type, WATERS_QUATTRO_PREMIER);
         }
     }
@@ -445,6 +509,7 @@ namespace pwiz.Skyline.Model
         public virtual bool ExportEdcMass { get; set; }
 
         public virtual double Ms1RepetitionTime { get; set; }
+        public virtual string SkylineDocumentFileName { get; set; }
 
         public TExp InitExporter<TExp>(TExp exporter)
             where TExp : AbstractMassListExporter
@@ -465,6 +530,7 @@ namespace pwiz.Skyline.Model
             exporter.SchedulingReplicateIndex = SchedulingReplicateNum;
             exporter.SchedulingAlgorithm = SchedulingAlgorithm;
             exporter.PolarityFilter = PolarityFilter;
+            exporter.SkylineDocumentFileName = SkylineDocumentFileName;
             return exporter;
         }
 
@@ -549,6 +615,9 @@ namespace pwiz.Skyline.Model
                 case ExportInstrumentType.THERMO_ECLIPSE:
                 case ExportInstrumentType.THERMO_EXPLORIS:
                 case ExportInstrumentType.THERMO_FUSION_LUMOS:
+                case ExportInstrumentType.THERMO_ASTRAL:
+                case ExportInstrumentType.THERMO_ASTRAL_ZOOM:
+                case ExportInstrumentType.THERMO_ASCEND:
                     return ExportThermoSureQuantMethod(doc, path, template, instrumentType);
                 case ExportInstrumentType.SHIMADZU:
                     if (type == ExportFileType.List)
@@ -575,7 +644,7 @@ namespace pwiz.Skyline.Model
                 case ExportInstrumentType.WATERS:
                 case ExportInstrumentType.WATERS_SYNAPT_TRAP:
                 case ExportInstrumentType.WATERS_SYNAPT_TRANSFER:
-                case ExportInstrumentType.WATERS_XEVO_TQ:
+                case ExportInstrumentType.WATERS_XEVO_TQ_MASS_LYNX:
                 case ExportInstrumentType.WATERS_XEVO_QTOF:
                     if (type == ExportFileType.List)
                         return ExportWatersCsv(doc, path);
@@ -583,6 +652,8 @@ namespace pwiz.Skyline.Model
                         return ExportWatersIsolationList(doc, path, template, instrumentType);
                     else
                         return ExportWatersMethod(doc, path, template);
+                case ExportInstrumentType.WATERS_XEVO_TQ_WATERS_CONNECT:
+                    return ExportWatersConnectMethod(doc, path, template);
                 case ExportInstrumentType.WATERS_QUATTRO_PREMIER:
                     return ExportWatersQMethod(doc, path, template);
                 default:
@@ -829,11 +900,6 @@ namespace pwiz.Skyline.Model
             if (MethodType == ExportMethodType.Standard)
                 exporter.RunLength = RunLength;
             exporter.RetentionStartAndEnd = RetentionStartAndEnd;
-            if (ExportInstrumentType.THERMO_STELLAR.Equals(instrumentType))
-            {
-                exporter.IsolationList = AbstractMassListExporter.IsolationStrategy.precursor;
-                exporter.IsPrecursorLimited = true;
-            }
             PerformLongExport(m => exporter.ExportMethod(fileName, templateName, instrumentType, m));
 
             return exporter;
@@ -970,6 +1036,47 @@ namespace pwiz.Skyline.Model
             return exporter;
         }
 
+        public AbstractMassListExporter ExportWatersConnectMethod(SrmDocument document, string exportMethodUrlString, string templateMethodUrlString)
+        {
+            if (exportMethodUrlString == null)
+            {
+                // doing method file count
+                var exporter = InitExporter(new WatersConnectMethodExporter(document, null));
+                exporter.ServerDecidesOnBuckets = (ExportStrategy == ExportStrategy.WcDecide);
+                PerformLongExport(m => exporter.ExportMethod(null, null, null, m));
+                return exporter;
+            }
+
+            var templateMethodUrl = new WatersConnectAcquisitionMethodUrl(templateMethodUrlString);
+            var targetFolderUrl = new WatersConnectUrl(exportMethodUrlString);
+            var methodName = targetFolderUrl.InjectionId;       // This is a hack to pass method name to the exporter
+            targetFolderUrl = targetFolderUrl.ChangeInjectionId(null); // Clear the injection ID so that it does not get used in the export
+
+            if (templateMethodUrl.ServerUrl != targetFolderUrl.ServerUrl)
+            {
+                throw new ApplicationException(ModelResources.ExportProperties_ExportWatersConnectMethod_Cannot_use_a_template_method_from_another_server_);
+            }
+
+            // get the account from the settings
+            var account = Settings.Default.RemoteAccountList.GetRemoteAccount(targetFolderUrl);
+            if (account is WatersConnectAccount wcAcct)
+            {
+                var exporter = InitExporter(new WatersConnectMethodExporter(document, wcAcct)); // Load transition data into the memory list
+                if (MethodType == ExportMethodType.Standard)
+                {
+                    exporter.RunLength = RunLength;
+                }
+                exporter.ServerDecidesOnBuckets = (ExportStrategy == ExportStrategy.WcDecide);
+                exporter.MethodType = MethodType;
+                // decode URLs from the string parameters
+                // Convert to JSON and upload
+                PerformLongExport(m => exporter.ExportMethod(methodName, targetFolderUrl, templateMethodUrl, m));
+                return exporter;
+            }
+            else
+                throw new ApplicationException(ModelResources.ExportProperties_ExportWatersConnectMethod_No_matching_Waters_Connect_account_is_found_for_this_URL_);
+        }
+
         public abstract void PerformLongExport(Action<IProgressMonitor> performExport);
     }
 
@@ -1042,7 +1149,62 @@ namespace pwiz.Skyline.Model
                 start = Math.Max(startNum, 0).ToString(CultureInfo);
                 end = Math.Max(endNum, 0).ToString(CultureInfo);
             }
-         }
+        }
+        
+        /// <summary>
+        /// Returns a normalized collision energy (NCE) for a full-scan instrument,
+        /// supporting collision energy optimization, even if the CE predictor is set
+        /// to "None" where a default value is used with steps of 1 NCE unit.
+        /// </summary>
+        protected double GetNormalizedCollisionEnergy(PeptideDocNode nodePep, TransitionGroupDocNode nodeTranGroup,
+            TransitionDocNode nodeTran, double defaultNCE, int step)
+        {
+            double ce = 0;
+            var cePredictor = Document.Settings.TransitionSettings.Prediction.CollisionEnergy;
+            // Avoid using a predictor not intended for NCE
+            if (cePredictor != null && cePredictor.Conversions.All(c => c.Slope == 0))
+                ce = GetCollisionEnergy(nodePep, nodeTranGroup, nodeTran, step);
+            if (ce == 0)
+            {
+                ce = defaultNCE;
+                if (Equals(OptimizeType, ExportOptimize.CE))
+                    ce += step;
+            }
+
+            return ce;
+        }
+
+        /// <summary>
+        /// Returns a normalized collision energy (NCE) for a full-scan instrument,
+        /// supporting collision energy optimization, even if the CE predictor is set
+        /// to "None" where a default value is used with steps of 1 NCE unit. But avoiding
+        /// using this precursor-based determination for DIA, and instead using either
+        /// a narrow window DIA value or a wide window DIA value.
+        /// </summary>
+        protected double GetNormalizedCollisionEnergy(PeptideDocNode nodePep, TransitionGroupDocNode nodeTranGroup,
+            TransitionDocNode nodeTran, double defaultNce, double wideDiaNce, int step)
+        {
+            // Note that this is normalized CE (not absolute)
+            var fullScan = Document.Settings.TransitionSettings.FullScan;
+            var nce = defaultNce;
+            if (fullScan.AcquisitionMethod != FullScanAcquisitionMethod.DIA)
+            {
+                nce = GetNormalizedCollisionEnergy(nodePep, nodeTranGroup, nodeTran, nce, step);
+            }
+            else if (fullScan.IsolationScheme != null)
+            {
+                // Suggested by Thermo to use 27 for normal isolation ranges and 30 for wider windows
+                var scheme = fullScan.IsolationScheme;
+                if (!scheme.FromResults && !scheme.IsAllIons)
+                {
+                    if (scheme.PrespecifiedIsolationWindows.Average(iw => iw.IsolationEnd - iw.IsolationStart) >= 5)
+                        nce = wideDiaNce;
+                }
+            }
+
+            return nce;
+        }
+
         protected override void WriteTransition(TextWriter writer,
                                                 int fileNumber,
                                                 PeptideGroupDocNode nodePepGroup,
@@ -1183,85 +1345,42 @@ namespace pwiz.Skyline.Model
             writer.WriteLine();
         }
 
-        protected const string EXE_BUILD_METHOD = @"Method\Thermo\BuildThermoMethod";
+        public const string EXE_BUILD_METHOD = @"Method\Thermo\BuildThermoMethod";
 
-        // ReSharper disable LocalizableElement
-        private static readonly string[] DEPENDENCY_LIBRARIES = {
-                                                                    "Thermo.TNG.MethodXMLFactory.dll",
-                                                                    "Thermo.TNG.MethodXMLInterface.dll"
-                                                                };
-        // ReSharper restore LocalizableElement
+        public static string ExeBuildRelativePath => Path.GetDirectoryName(EXE_BUILD_METHOD);
 
-        protected static void EnsureLibraries()
+        protected ThermoDllFinder Finder { get; private set; }
+
+        protected bool EnsureLibraries(string expectedInstrumentType)
         {
-            string skylinePath = Assembly.GetExecutingAssembly().Location;
-            if (string.IsNullOrEmpty(skylinePath))
-                throw new IOException(ModelResources.ThermoMassListExporter_EnsureLibraries_Thermo_method_creation_software_may_not_be_installed_correctly_);
-
-            // ReSharper disable ConstantNullCoalescingCondition
-            string buildSubdir = Path.GetDirectoryName(EXE_BUILD_METHOD) ?? string.Empty;
-            string exeDir = Path.Combine(Path.GetDirectoryName(skylinePath) ?? string.Empty, buildSubdir);
-            string instrumentSoftwarePath = GetSoftwarePath();                                                        
-            if (instrumentSoftwarePath == null)
+            Finder = new ThermoDllFinder();
+            var instrumentInfo = Finder.GetSoftwareInfo();
+            string instrumentType = instrumentInfo.InstrumentType;
+            if (instrumentType == null)
             {
-                // If all the necessary libraries exist, then continue even if MassLynx is gone.
-                foreach (var libraryName in DEPENDENCY_LIBRARIES)
-                {
-                    if (!File.Exists(Path.Combine(exeDir, libraryName)))
-                        throw new IOException(ModelResources.ThermoMassListExporter_EnsureLibraries_Failed_to_find_a_valid_Thermo_instrument_installation_);
-                }
-                return;
+                throw new IOException(TextUtil.LineSeparate(ModelResources.ThermoMassListExporter_EnsureLibraries_Failed_to_find_a_valid_Thermo_instrument_installation_,
+                    instrumentInfo.FailureReason));
             }
-
-            // ReSharper restore ConstantNullCoalescingCondition
-            foreach (var library in DEPENDENCY_LIBRARIES)
+            if (!Equals(expectedInstrumentType, instrumentType))
             {
-                string srcFile = Path.Combine(instrumentSoftwarePath, library);
-                if (!File.Exists(srcFile))
-                {
-                    throw new IOException(
-                        string.Format(ModelResources.ThermoMassListExporter_EnsureLibraries_Thermo_instrument_software_may_not_be_installed_correctly__The_library__0__could_not_be_found_,
-                                      srcFile));
-                }
-                // If destination file does not exist or has a different modification time from
-                // the source, then copy the source file from the installation.
-                string destFile = Path.Combine(exeDir, library);
-                if (!File.Exists(destFile) || !Equals(File.GetLastWriteTime(destFile), File.GetLastWriteTime(srcFile)))
-                    File.Copy(srcFile, destFile, true);
+                throw new IOException(string.Format(
+                    ModelResources.ThermoMassListExporter_EnsureLibraries_The_installed_Thermo_instrument_type___0___does_not_match_the_requested_output_method_type___1___,
+                    instrumentType, expectedInstrumentType));
             }
+            return true;
         }
 
-        private static string GetSoftwarePath()
+        protected List<string> GetTypeAndVersionArguments()
         {
-            try
-            {
-                // CONSIDER: Might be worth breaking this up to provide more helpful error messages
-                using (var tngKey = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Wow6432Node\Thermo Instruments\TNG"))
-                using (var machineKey = GetFirstSubKey(tngKey))
-                using (var versionKey = GetFirstSubKey(machineKey))
-                {
-                    if (versionKey == null)
-                        return null;
-                    var valueObject = versionKey.GetValue(@"ProgramPath");
-                    if (valueObject == null)
-                        return null;
-                    return valueObject.ToString();
-                }
-            }
-            catch
-            {
-                return null;
-            }
-        }
-
-        private static RegistryKey GetFirstSubKey(RegistryKey parentKey)
-        {
-            if (parentKey == null)
-                return null;
-            int keyCount = parentKey.SubKeyCount;
-            if (keyCount < 1)
-                return null;
-            return parentKey.OpenSubKey(parentKey.GetSubKeyNames()[0]);
+            var softwareInfo = Finder.GetSoftwareInfo();
+            Assume.IsNotNull(softwareInfo.InstrumentType, @"Missing instrument type running Thermo method export");
+            var argv = new List<string> { @"-t",  softwareInfo.InstrumentType };
+            double registryInstrumentVer = Finder.GetSoftwareInfo().Version;
+            if (registryInstrumentVer > 0)
+                argv.AddRange(new[] { @"-v", registryInstrumentVer.ToString(CultureInfo.InvariantCulture) });
+            // For debugging: export method update XML to a file
+            // argv.Add(@"-x");
+            return argv;
         }
     }
 
@@ -1925,25 +2044,14 @@ namespace pwiz.Skyline.Model
 
         public void ExportMethod(string fileName, string templateName, string instrumentType, IProgressMonitor progressMonitor)
         {
-            if (fileName != null)
-                EnsureLibraries();
+            string registryInstrumentType = ExportInstrumentType.ThermoInstallationType(instrumentType);
+            if (fileName != null && !EnsureLibraries(registryInstrumentType))
+                return;
 
             if (!InitExport(fileName, progressMonitor))
                 return;
 
-            var argv = new List<string>();
-            if (instrumentType.Equals(ExportInstrumentType.THERMO_ENDURA))
-            {
-                argv.Add(@"-e");
-            }
-            else if (instrumentType.Equals(ExportInstrumentType.THERMO_QUANTIVA))
-            {
-                argv.Add(@"-q");
-            }
-            else if (instrumentType.Equals(ExportInstrumentType.THERMO_ALTIS))
-            {
-                argv.Add(@"-a");
-            }
+            var argv = GetTypeAndVersionArguments();
             MethodExporter.ExportMethod(EXE_BUILD_METHOD, argv, fileName, templateName, MemoryOutput, progressMonitor);
         }
     }
@@ -1954,14 +2062,14 @@ namespace pwiz.Skyline.Model
 
         public override void ExportMethod(string fileName, string templateName, IProgressMonitor progressMonitor)
         {
-            if (fileName != null)
-                EnsureLibraries();
+            string registryInstrumentType = @"Stellar";
+            if (fileName != null && !EnsureLibraries(registryInstrumentType))
+                return;
 
             if (!InitExport(fileName, progressMonitor))
                 return;
 
-            var argv = new List<string>();
-            argv.Add(@"-t");
+            var argv = GetTypeAndVersionArguments();
             MethodExporter.ExportMethod(EXE_BUILD_METHOD, argv, fileName, templateName, MemoryOutput, progressMonitor);
         }
     }
@@ -1990,6 +2098,8 @@ namespace pwiz.Skyline.Model
         public double? IntensityThresholdPercent { get; set; }
         public double? IntensityThresholdValue { get; set; }
         public double? IntensityThresholdMin { get; set; }
+
+        protected override bool CanOptimizeWithoutEquations => true;
 
         protected override string InstrumentType => _instrumentType;
 
@@ -2133,7 +2243,9 @@ namespace pwiz.Skyline.Model
             writer.Write(FieldSeparator);
             writer.Write(nodeTran != null ? GetProductMz(SequenceMassCalc.PersistentMZ(nodeTran.Mz), step).ToString(CultureInfo) : string.Empty);
             writer.Write(FieldSeparator);
-            writer.Write(ThermoFusionMassListExporter.GetCE(Document, nodePep, nodeTranGroup, nodeTran, InstrumentType).ToString(CultureInfo));
+            double narrowNCE = ThermoFusionMassListExporter.NARROW_NCE;
+            double wideNCE = ThermoFusionMassListExporter.WIDE_NCE;
+            writer.Write(GetNormalizedCollisionEnergy(nodePep, nodeTranGroup, nodeTran, narrowNCE, wideNCE, step).ToString(CultureInfo));
 
             if (UseSlens)
             {
@@ -2171,28 +2283,14 @@ namespace pwiz.Skyline.Model
 
         public void ExportMethod(string fileName, string templateName, IProgressMonitor progressMonitor)
         {
-            if (fileName != null)
-                EnsureLibraries();
+            string registryInstrumentType = ExportInstrumentType.ThermoInstallationType(_instrumentType);
+            if (fileName != null && !EnsureLibraries(registryInstrumentType))
+                return;
 
             if (!InitExport(fileName, progressMonitor))
                 return;
 
-            var argv = new List<string>();
-            switch (_instrumentType)
-            {
-                case ExportInstrumentType.THERMO_EXPLORIS:
-                    argv.Add(@"-p");
-                    break;
-                case ExportInstrumentType.THERMO_FUSION:
-                    argv.Add(@"-f");
-                    break;
-                case ExportInstrumentType.THERMO_FUSION_LUMOS:
-                    argv.Add(@"-l");
-                    break;
-                case ExportInstrumentType.THERMO_ECLIPSE:
-                    argv.Add(@"-c");
-                    break;
-            }
+            var argv = GetTypeAndVersionArguments();
             MethodExporter.ExportMethod(EXE_BUILD_METHOD, argv, fileName, templateName, MemoryOutput, progressMonitor);
         }
     }
@@ -4160,6 +4258,8 @@ namespace pwiz.Skyline.Model
         public const double NARROW_NCE = 27.0;
         public const double WIDE_NCE = 30.0;
 
+        protected override bool CanOptimizeWithoutEquations => true;
+
         public ThermoQExactiveIsolationListExporter(SrmDocument document)
             : base(document)
         {
@@ -4187,10 +4287,10 @@ namespace pwiz.Skyline.Model
 
         public string GetHeader(char fieldSeparator)
         {
-            var hdr = @"Mass [m/z],Formula [M],Species,CS [z],Polarity,Start [min],End [min],NCE,";
+            var hdr = @"Compound,Mass [m/z],Formula [M],Species,CS [z],Polarity,Start [min],End [min],NCE";
             if (UseSlens)
-                hdr += @"S-lens,";
-            return (hdr+@"Comment").Replace(',', fieldSeparator);
+                hdr += @",S-lens";
+            return hdr.Replace(',', fieldSeparator);
         }
 
         protected override void WriteTransition(TextWriter writer,
@@ -4202,6 +4302,7 @@ namespace pwiz.Skyline.Model
                                                 TransitionDocNode nodeTran,
                                                 int step)
         {
+            string compound = GetCompound(nodePep, nodeTranGroup, true).ToDsvField(FieldSeparator, FieldSeparatorReplacement);
             string precursorMz = SequenceMassCalc.PersistentMZ(nodeTranGroup.PrecursorMz).ToString(CultureInfo);
 
             string start = string.Empty;
@@ -4220,46 +4321,28 @@ namespace pwiz.Skyline.Model
             }
 
             string z = Math.Abs(nodeTranGroup.TransitionGroup.PrecursorAdduct.AdductCharge).ToString(CultureInfo);
-            // Note that this is normalized CE (not absolute)
-            var fullScan = Document.Settings.TransitionSettings.FullScan;
-            bool wideWindowDia = false;
-            if (fullScan.AcquisitionMethod == FullScanAcquisitionMethod.DIA && fullScan.IsolationScheme != null)
-            {
-                // Suggested by Thermo to use 27 for normal isolation ranges and 30 for wider windows
-                var scheme = fullScan.IsolationScheme;
-                if (!scheme.FromResults && !scheme.IsAllIons)
-                {
-                    wideWindowDia = scheme.PrespecifiedIsolationWindows.Average(
-                        iw => iw.IsolationEnd - iw.IsolationStart) >= 5;
-                }
-            }
+            string nce = GetNormalizedCollisionEnergy(nodePep, nodeTranGroup, nodeTran, NARROW_NCE, WIDE_NCE, step).ToString(CultureInfo);
 
-            var ce = Document.GetOptimizedCollisionEnergy(nodePep, nodeTranGroup, nodeTran)
-                     ?? (wideWindowDia ? WIDE_NCE : NARROW_NCE); // Normalized CE, not a real voltage
-            var ceString = ce.ToString(CultureInfo);
-
-            string comment = string.Format(@"{0} ({1})",
-                GetCompound(nodePep, nodeTranGroup),
-                nodeTranGroup.TransitionGroup.LabelType).ToDsvField(FieldSeparator);
-
-            var polarity = (nodeTranGroup.PrecursorCharge > 0) ? @"Positive" : @"Negative";
+            var polarity = nodeTranGroup.PrecursorCharge > 0 ? @"Positive" : @"Negative";
             if (UseSlens)
             {
                 var slens = (ExplicitTransitionValues.Get(nodeTran).SLens ?? DEFAULT_SLENS).ToString(CultureInfo);  
-                Write(writer, precursorMz, string.Empty, string.Empty, z, polarity, start, end, ceString, slens, comment);
+                Write(writer, compound, precursorMz, string.Empty, string.Empty, z, polarity, start, end, nce, slens);
             }
             else
             {
-                Write(writer, precursorMz, string.Empty, string.Empty, z, polarity, start, end, ceString, comment);
+                Write(writer, compound, precursorMz, string.Empty, string.Empty, z, polarity, start, end, nce);
             }
         }
     }
 
     public class ThermoStellarMassListExporter : ThermoMassListExporter
     {
-        public const double WIDE_NCE = 30.0;
+        public const double DEFAULT_NCE = 30.0;
 
         protected override string InstrumentType => ExportInstrumentType.THERMO_STELLAR;
+        protected override bool CanOptimizeWithoutEquations => true;
+
         public bool WriteFaimsCv { get; set; }
 
         public ThermoStellarMassListExporter(SrmDocument document)
@@ -4271,6 +4354,8 @@ namespace pwiz.Skyline.Model
 
         protected override void WriteHeaders(TextWriter writer)
         {
+            writer.Write(@"Compound");
+            writer.Write(FieldSeparator);
             writer.Write(@"m/z");
             writer.Write(FieldSeparator);
             writer.Write(@"z");
@@ -4301,6 +4386,8 @@ namespace pwiz.Skyline.Model
             TransitionGroupDocNode nodeTranGroup, TransitionGroupDocNode nodeTranGroupPrimary, TransitionDocNode nodeTran,
             int step)
         {
+            writer.Write(GetCompound(nodePep, nodeTranGroup, true).ToDsvField(FieldSeparator, FieldSeparatorReplacement));
+            writer.Write(FieldSeparator);
             writer.Write(SequenceMassCalc.PersistentMZ(nodeTranGroup.PrecursorMz).ToString(CultureInfo));
             writer.Write(FieldSeparator);
 
@@ -4323,7 +4410,9 @@ namespace pwiz.Skyline.Model
             writer.Write(FieldSeparator);
             writer.Write(end);
             writer.Write(FieldSeparator);
-            writer.Write(WIDE_NCE);
+            // CONSIDER: What should happen if the acquisition method is DIA?
+            var nce = GetNormalizedCollisionEnergy(nodePep, nodeTranGroup, nodeTran, DEFAULT_NCE, step);
+            writer.Write(nce.ToString(CultureInfo));
             if (WriteFaimsCv)
             {
                 var cv = GetCompensationVoltage(nodePep, nodeTranGroup, nodeTran, step);
@@ -4332,6 +4421,7 @@ namespace pwiz.Skyline.Model
             }
             writer.WriteLine();
         }
+
         public virtual void ExportMethod(string fileName, string templateName, IProgressMonitor progressMonitor)
         {
             if (!InitExport(fileName, progressMonitor))
@@ -4344,6 +4434,8 @@ namespace pwiz.Skyline.Model
     {
         public const double NARROW_NCE = 27.0;
         public const double WIDE_NCE = 30.0;
+
+        protected override bool CanOptimizeWithoutEquations => true;
 
         public bool Tune3 { get; set; }
         public bool Tune3Columns { get { return IsolationList == IsolationStrategy.precursor && Tune3; } }
@@ -4360,7 +4452,7 @@ namespace pwiz.Skyline.Model
         public string GetHeader(char fieldSeparator)
         {
             var hdr = !Tune3Columns
-                ? @"m/z,z,t start (min),t end (min),CID Collision Energy (%)"
+                ? @"Compound,m/z,z,t start (min),t end (min),CID Collision Energy (%)"
                 : @"Compound,Formula,Adduct,m/z,z,Polarity,t start (min),t stop (min),CID Collision Energy (%)";
             if (UseSlens)
                 hdr += @",S-lens";
@@ -4383,12 +4475,11 @@ namespace pwiz.Skyline.Model
                                                 TransitionDocNode nodeTran,
                                                 int step)
         {
+            writer.Write(GetCompound(nodePep, nodeTranGroup, true).ToDsvField(FieldSeparator, FieldSeparatorReplacement));
+            writer.Write(FieldSeparator);
+
             if (Tune3Columns)
             {
-                writer.Write(@"{0} ({1})",
-                    nodePep.Peptide.IsCustomMolecule ? nodeTranGroup.CustomMolecule.InvariantName : Document.Settings.GetModifiedSequence(nodePep).Sequence,
-                    nodeTranGroup.TransitionGroup.LabelType);
-                writer.Write(FieldSeparator);
                 writer.Write(string.Empty);
                 writer.Write(FieldSeparator);
                 writer.Write(string.Empty);
@@ -4421,7 +4512,8 @@ namespace pwiz.Skyline.Model
             writer.Write(FieldSeparator);
             writer.Write(end);
             writer.Write(FieldSeparator);
-            writer.Write(GetCE(Document, nodePep, nodeTranGroup, nodeTran, InstrumentType).ToString(CultureInfo));
+            double nce = GetNormalizedCollisionEnergy(nodePep, nodeTranGroup, nodeTran, NARROW_NCE, WIDE_NCE, step);
+            writer.Write(nce.ToString(CultureInfo));
 
             if (UseSlens)
             {
@@ -4435,29 +4527,6 @@ namespace pwiz.Skyline.Model
                 writer.Write(cv.HasValue ? cv.Value.ToString(CultureInfo) : string.Empty);
             }
             writer.WriteLine();
-        }
-
-        public static double GetCE(SrmDocument doc, PeptideDocNode nodePep, TransitionGroupDocNode nodeGroup, TransitionDocNode nodeTransition, string instrumentType)
-        {
-            var optCe = doc.GetOptimizedCollisionEnergy(nodePep, nodeGroup, nodeTransition);
-            if (optCe.HasValue)
-                return optCe.Value;
-            // Requested by Thermo for this instrument type.
-            if (instrumentType == ExportInstrumentType.THERMO_STELLAR)
-                return WIDE_NCE;
-            // Note that this is normalized CE (not absolute)
-            var fullScan = doc.Settings.TransitionSettings.FullScan;
-            var wideWindowDia = false;
-            if (fullScan.AcquisitionMethod == FullScanAcquisitionMethod.DIA && fullScan.IsolationScheme != null)
-            {
-                // Suggested by Thermo to use 27 for normal isolation ranges and 30 for wider windows
-                var scheme = fullScan.IsolationScheme;
-                if (!scheme.FromResults && !scheme.IsAllIons)
-                {
-                    wideWindowDia = scheme.PrespecifiedIsolationWindows.Average(iw => iw.IsolationEnd - iw.IsolationStart) >= 5;
-                }
-            }
-            return wideWindowDia ? WIDE_NCE : NARROW_NCE;
         }
 
         public virtual void ExportMethod(string fileName, string templateName, IProgressMonitor progressMonitor)
@@ -4530,6 +4599,22 @@ namespace pwiz.Skyline.Model
                 writer.Write(FieldSeparator);
                 writer.Write("label_type");                
             }
+            writer.Write(FieldSeparator);
+            writer.Write("precursor_charge");
+            writer.Write(FieldSeparator);
+            writer.Write("rt_window");
+            writer.Write(FieldSeparator);
+            writer.Write("is_quant_ion");
+            writer.Write(FieldSeparator);
+            writer.Write("document.name");
+            writer.Write(FieldSeparator);
+            writer.Write("adduct.info");
+            writer.Write(FieldSeparator);
+            writer.Write("compound.internal_standard");
+            writer.Write(FieldSeparator);
+            writer.Write("compound.note");
+            writer.Write(FieldSeparator);
+            writer.Write("compound.name");
             writer.WriteLine();
         }
         // ReSharper restore LocalizableElement
@@ -4582,7 +4667,7 @@ namespace pwiz.Skyline.Model
             writer.Write(SequenceMassCalc.PersistentMZ(nodeTranGroup.PrecursorMz).ToString(CultureInfo));
             writer.Write(FieldSeparator);
 
-            if (MethodType == ExportMethodType.Standard)
+            if (MethodType == ExportMethodType.Standard && !(this is WatersConnectMethodExporter))
             {
                 RTWindow = RunLength;   // Store for later use
                 writer.Write((RunLength / 2).ToString(CultureInfo));
@@ -4625,6 +4710,32 @@ namespace pwiz.Skyline.Model
                 writer.Write(FieldSeparator);
                 writer.WriteDsvField(nodeTranGroup.TransitionGroup.LabelType.ToString(), FieldSeparator);
             }
+            writer.Write(FieldSeparator);
+            writer.Write(nodeTranGroup.PrecursorAdduct.AdductCharge);
+            writer.Write(FieldSeparator);
+            writer.WriteDsvField(RTWindow.ToString(CultureInfo), FieldSeparator);
+            writer.Write(FieldSeparator);
+            if (nodeTran.ResultsRank.HasValue)
+                writer.Write((nodeTran.ResultsRank == 1).ToString());
+            else if (nodeTran.HasLibInfo)
+                writer.Write((nodeTran.LibInfo.Rank == 1).ToString());
+            else
+                writer.Write(false);
+            writer.Write(FieldSeparator);
+            writer.Write(SkylineDocumentFileName);
+            writer.Write(FieldSeparator);
+            writer.Write(nodeTranGroup.PrecursorAdduct.AdductFormula);
+            writer.Write(FieldSeparator);
+            writer.Write((nodePep.GlobalStandardType == StandardType.GLOBAL_STANDARD).ToString());
+            writer.Write(FieldSeparator);
+            if (string.IsNullOrEmpty(nodePep.Note))
+                writer.WriteDsvField(string.Empty, FieldSeparator, TextUtil.SPACE);
+            else
+                writer.WriteDsvField(nodePep.Note.Substring(0, Math.Min(nodePep.Note.Length, 100)), FieldSeparator, TextUtil.SPACE);
+
+            writer.Write(FieldSeparator);
+            writer.WriteDsvField(FormatMods(GetCompound(nodePep, nodeTranGroup)), FieldSeparator);
+
             writer.WriteLine();
         }
 
@@ -4896,7 +5007,9 @@ namespace pwiz.Skyline.Model
                 EnsureLibraries();
 
             if (!InitExport(fileName, progressMonitor))
+            {
                 return;
+            }
 
             var argv = new List<string>();
             if (Equals(MethodInstrumentType, ExportInstrumentType.WATERS_QUATTRO_PREMIER))
@@ -4970,6 +5083,116 @@ namespace pwiz.Skyline.Model
         }
     }
 
+    public class WatersConnectMethodExporter : WatersMassListExporter
+    {
+        private WatersConnectAccount _wcAccount;
+        private string _methodName;
+        public bool ServerDecidesOnBuckets { get; set; }
+        public string UploadResult { get; private set; }
+        public bool UploadSuccessful { get; private set; }
+        public WatersConnectMethodExporter(SrmDocument document, WatersConnectAccount account)
+            : base(document)
+        {
+            _wcAccount = account;
+            ConeVoltage = 10; // Default value, may be overridden by ExplicitValues in TransitionGroup
+        }
+        public void ExportMethod(string fileName, WatersConnectUrl targetFolderUrl, WatersConnectAcquisitionMethodUrl templateUrl, IProgressMonitor progressMonitor)
+        {
+            _methodName = fileName;
+            if (!InitExport(fileName, progressMonitor))
+                return;
+
+            if (_wcAccount == null)
+                throw new ArgumentNullException(nameof(_wcAccount), @"WatersConnectSession requires a WatersConnectAccount");
+            var wcSession = new WatersConnectSessionAcquisitionMethod(_wcAccount);
+            if (targetFolderUrl.FolderOrSampleSetId == null)
+            {
+                throw new IOException(string.Format(ModelResources.WatersConnectMethodExporter_ExportMethod_Folder_ID_is_missing, targetFolderUrl.ToString()));
+            }
+
+            var sbUploadResult = new StringBuilder();
+            foreach (var methodData in MemoryOutput)
+            {
+                UploadSuccessful = false;
+                ParseableObject.ParsingContext.Clear();
+                if (MethodType == ExportMethodType.Scheduled)
+                    ParseableObject.ParsingContext[@"scheduledMethod"] = @"true";
+
+                var method = ParseMethod(methodData.Value.ToString());
+                method.DestinationFolderId = targetFolderUrl.FolderOrSampleSetId;
+                method.TemplateVersionId = templateUrl.MethodVersionId.ToString();
+                if (ServerDecidesOnBuckets)
+                    method.CreationMode = @"Multiple";
+                else 
+                    method.CreationMode = @"Single";
+                if (MethodType == ExportMethodType.Standard)
+                    method.ScheduleType = @"FullGradientTime";
+                else
+                    method.ScheduleType = @"AcquisitionWindows";
+                method.AuditEntry = new AuditEntryType()
+                {
+                    Details = string.Format(CultureInfo.CurrentCulture,
+                        ModelResources.WatersConnectMethodExporter_ExportMethod_Creating_MRM_method___0___from_Skyline_document___1__, _methodName, SkylineDocumentFileName),
+                };
+                if (MemoryOutput.Count == 1)
+                    method.Name = _methodName;
+                else
+                    method.Name = methodData.Key.Replace(MEMORY_KEY_ROOT, _methodName);
+                JsonSerializer serializer = new JsonSerializer();
+                var json = JsonConvert.SerializeObject(method,
+                    Newtonsoft.Json.Formatting.Indented,
+                    new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });
+
+                sbUploadResult.AppendLine(wcSession.UploadMethod(method.Name, json, progressMonitor));
+                UploadSuccessful = true;
+            }
+            UploadResult = sbUploadResult.ToString();
+        }
+
+        [SuppressMessage("ReSharper", "RedundantNameQualifier")]
+        // Using fully-qualified names of the Waters Connect method model for clarity.
+        public MethodModel ParseMethod(string outputLines)
+        {
+            var linesReader = new DsvFileReader(new StringReader(outputLines), TextUtil.SEPARATOR_CSV);
+            var targets = new List<WatersConnect.Compound>();
+            WatersConnect.Compound currentTarget = null;
+            WatersConnect.AdductInfo currentAdduct = null;
+            while (linesReader.ReadLine() != null)
+            {
+                // we assume that the lines are sorted by target
+                if (currentTarget == null || !currentTarget.IsSameCompound(linesReader))
+                {
+                    currentTarget = new WatersConnect.Compound();
+                    targets.Add(currentTarget);
+                    currentTarget.ParseObject(linesReader);
+                    currentTarget.Adducts = new List<WatersConnect.AdductInfo>();
+                }
+                if (currentTarget.Adducts.Count == 0 || !currentTarget.Adducts.Last().IsSameAdduct(linesReader))
+                {
+                    if (currentAdduct != null && !currentAdduct.Transitions.Any(t => t.IsQuanIon))
+                        currentAdduct.Transitions.First().IsQuanIon = true; // make sure that there is always a quant ion
+                    currentAdduct = new WatersConnect.AdductInfo();
+                    currentTarget.Adducts.Add(currentAdduct);
+                    currentAdduct.ParseObject(linesReader);
+                    currentAdduct.Transitions = new List<WatersConnect.Transition>();
+                }
+                var currentTransition = new WatersConnect.Transition();
+                currentAdduct?.Transitions.Add(currentTransition);
+                currentTransition.ParseObject(linesReader);
+            }
+            Assume.IsNotNull(currentTarget);
+            Assume.IsNotNull(currentAdduct);
+            if (currentAdduct!= null && !currentAdduct.Transitions.Any(t => t.IsQuanIon))
+                currentAdduct.Transitions.First().IsQuanIon = true; // make sure that the last adduct has a quant ion
+
+            var res = new MethodModel();
+            res.Compounds = targets.ToArray();
+            res.Description = ModelResources.WatersConnectMethodExporter_ParseMethod_Exported_from_Skyline;
+            res.Name = _methodName;
+            return res;
+        }
+    }
+
     internal static class MethodExporter
     {
 
@@ -5023,7 +5246,7 @@ namespace pwiz.Skyline.Model
                         CreateNoWindow = true,
                         UseShellExecute = false,
                         // Common directory includes the directory separator
-                        WorkingDirectory = dirWork + @"\\",
+                        WorkingDirectory = dirWork + @"\",
                         Arguments = string.Join(@" ", argv.ToArray()),
                         RedirectStandardOutput = true,
                         RedirectStandardError = true,

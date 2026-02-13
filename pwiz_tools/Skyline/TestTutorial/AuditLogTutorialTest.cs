@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Rita Chupalov <ritach .at. uw.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -31,6 +31,7 @@ using pwiz.PanoramaClient;
 using pwiz.Common.Collections;
 using pwiz.Common.DataBinding;
 using pwiz.Common.DataBinding.Controls.Editor;
+using pwiz.CommonMsData;
 using pwiz.Skyline;
 using pwiz.Skyline.Alerts;
 using pwiz.Skyline.Controls;
@@ -38,16 +39,15 @@ using pwiz.Skyline.Controls.AuditLog;
 using pwiz.Skyline.Controls.Databinding;
 using pwiz.Skyline.Controls.Graphs;
 using pwiz.Skyline.Controls.Graphs.Calibration;
+using pwiz.Skyline.Controls.Databinding.AuditLog;
 using pwiz.Skyline.EditUI;
 using pwiz.Skyline.FileUI;
 using pwiz.Skyline.Model;
 using pwiz.Skyline.Model.AuditLog;
-using pwiz.Skyline.Model.AuditLog.Databinding;
 using pwiz.Skyline.Model.Databinding.Entities;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.DocSettings.AbsoluteQuantification;
 using pwiz.Skyline.Model.GroupComparison;
-using pwiz.Skyline.Model.Results;
 using pwiz.Skyline.Model.Results.Scoring;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.SettingsUI;
@@ -67,6 +67,13 @@ namespace pwiz.SkylineTestTutorial
         public const string PANORAMA_FOLDER = "SkylineTest";
         public const string PANORAMA_USER_NAME = "skyline_tester@proteinms.net";
         public const string PANORAMA_PASSWORD = "Lclcmsms1!";
+
+        /// <summary>
+        /// Contains the version text to show in the audit log entries in s-23.
+        /// Set to null and run to s-23 to see the current version, and copy it here
+        /// if desired.
+        /// </summary>
+        public const string SKYLINE_VERSION_TEXT = "25.1.0.237-519d29babc (64-Bit)";
 
         public string testFolderName = "AuditLogUpload";
 
@@ -95,9 +102,11 @@ namespace pwiz.SkylineTestTutorial
                 @"TestTutorial\AuditLogViews.zip"
             };
 
-            AuditLogEntry.TimeProvider = new TestTimeProvider();
-
-            RunFunctionalTest();
+            using (new TestTimeProvider())
+            using (new TestVersionProvider(SKYLINE_VERSION_TEXT))
+            {
+                RunFunctionalTest();
+            }
         }
 
         private string GetTestPath(string relativePath)
@@ -184,6 +193,7 @@ namespace pwiz.SkylineTestTutorial
 
             RunUI( () =>
             {
+                SkylineWindow.ShowFilesTreeForm(false); // Hide files tab
                 SkylineWindow.ExpandPrecursors();
                 SkylineWindow.Height = 390;
             });
@@ -491,13 +501,13 @@ namespace pwiz.SkylineTestTutorial
 
                 PauseForManualTutorialStep("MANUAL STEP (no screenshot). Enter password in the Edit Server dialog but DO NOT click OK. Close this window instead to proceed.");
 
-                var publishDialog = ShowDialog<PublishDocumentDlg>(loginDialog.OkDialog);
+                var publishDialog = ShowDialog<PublishDocumentDlgPanorama>(loginDialog.OkDialog);
                 WaitForCondition(() => publishDialog.IsLoaded);
                 RunUI(() =>
                 {
                     publishDialog.SelectItem(testFolderName);
                 });
-                PauseForScreenShot<PublishDocumentDlg>("Folder selection dialog.");
+                PauseForScreenShot<PublishDocumentDlgPanorama>("Folder selection dialog.");
                 var shareTypeDlg = ShowDialog<ShareTypeDlg>(publishDialog.OkDialog);
                 var browserConfirmationDialog = ShowDialog<MultiButtonMsgDlg>(shareTypeDlg.OkDialog);
                 OkDialog(browserConfirmationDialog, browserConfirmationDialog.ClickYes);
@@ -654,18 +664,21 @@ namespace pwiz.SkylineTestTutorial
         }
     }
 
-    public class TestTimeProvider : AuditLogEntry.ITimeProvider
+    public class TestTimeProvider : AuditLogEntry.ITimeProvider, IDisposable
     {
+        private readonly AuditLogEntry.ITimeProvider _previousProvider;
         private readonly DateTime _startTime;
         private TimeSpan _elapsedTime = TimeSpan.Zero;
         private Random _random = new Random(1); // A consistent random series
 
-        public TestTimeProvider()
+        public TestTimeProvider(DateTime? startTime = null)
         {
+            _previousProvider = AuditLogEntry.TimeProvider;
             // Start with a consistent local time of 2025-1-1 at 9:35 AM
-            var localTime = new DateTime(2025, 1, 1, 9, 35, 0, DateTimeKind.Local);
+            var localTime = startTime ?? new DateTime(2025, 1, 1, 9, 35, 0, DateTimeKind.Local);
             // The audit logging system expects a UTC time.
             _startTime = localTime.ToUniversalTime();
+            AuditLogEntry.TimeProvider = this;
         }
 
         public DateTime Now
@@ -675,6 +688,31 @@ namespace pwiz.SkylineTestTutorial
                 _elapsedTime += TimeSpan.FromSeconds(_random.Next(2, 10));  // Random time from 2 to 10 seconds
                 return _startTime.Add(_elapsedTime);
             }
+        }
+
+        public void Dispose()
+        {
+            AuditLogEntry.TimeProvider = _previousProvider;
+        }
+    }
+
+    public class TestVersionProvider : AuditLogEntry.IVersionProvider, IDisposable
+    {
+        private readonly AuditLogEntry.IVersionProvider _previousProvider;
+
+        public string Version { get; }
+
+        public TestVersionProvider(string version)
+        {
+            _previousProvider = AuditLogEntry.VersionProvider;
+            Version = version;
+            if (!string.IsNullOrEmpty(version))
+                AuditLogEntry.VersionProvider = this;
+        }
+
+        public void Dispose()
+        {
+            AuditLogEntry.VersionProvider = _previousProvider;
         }
     }
 }

@@ -276,6 +276,7 @@ blib-test-build md_special_filtered-pdResult : --unicode -o : output/md_special_
 blib-test-build example-pdResult-confidence3 : -o -c@0.99 : output/example-pdResult-confidence3.blib : example-pdResult-confidence3.check zbuild.skip-lines : $(TEST_INPUTS_PATH)/example.pdResult ;
 blib-test-build example-pdResult-numeric : -o -c@0.96 : output/example-pdResult-numeric.blib : example-pdResult-numeric.check zbuild.skip-lines : $(TEST_INPUTS_PATH)/example.pdResult ;
 blib-test-build-basic pd-3_1 : -o -c@0.5 : $(TEST_INPUTS_PATH)/230807_P1_Neo_ES904_TMTProPrecision_1ug_DIA1Th_HCD30_Survey.pdResult ;
+blib-test-build-basic pdResult-no-spectra : -o -e@~exported_without_the_appropriate~ : $(TEST_INPUTS_PATH)/pdResult-no-spectra.pdResult ;
 
 blib-test-build pilot : --unicode -o : output/pilot.blib : pilot.check : $(TEST_INPUTS_PATH)/MB1_98_03.group.xml ;
 blib-test-build pilot-mzid : --unicode -o : output/pilot-mzid.blib : pilot-mzid.check : $(TEST_INPUTS_PATH)/ProtPilotTest.mzid ;
@@ -330,12 +331,14 @@ blib-test-build peptideshaker-mzid : --unicode -o : output/MoTai_PeptideShaker.b
 blib-test-build metamorpheus-mzid : --unicode -o : output/metamorpheus.blib : metamorpheus.check : $(TEST_INPUTS_PATH)/metamorpheus.mzid ;
 
 # Test DiaNN specLib format
-blib-test-build diann-speclib : -o : output/diann-speclib.blib : diann-speclib.check : $(TEST_INPUTS_PATH)/diann-swath.speclib ;
-blib-test-build diann-speclib-diapasef : -o : output/diann-hela-diapasef.blib : diann-hela-diapasef.check : $(TEST_INPUTS_PATH)/diann-hela-diapasef-lib.speclib ;
-blib-test-build-basic diann-mod-test : -o : $(TEST_INPUTS_PATH)/diann-mod-test.tsv.speclib ;
-blib-test-build-basic diann-mass-mod-test : -o : $(TEST_INPUTS_PATH)/diann-mass-mods.tsv.speclib ;
-blib-test-build-basic msfragger-diann : -o : $(TEST_INPUTS_PATH)/library.tsv.speclib ;
-blib-test-build-basic msfragger-diann-predicted : -o : $(TEST_INPUTS_PATH)/diann-predicted/lib.predicted.speclib ;
+blib-test-build diann-speclib : -o -c@0 : output/diann-speclib.blib : diann-speclib.check : $(TEST_INPUTS_PATH)/diann-swath.speclib ;
+blib-test-build diann-speclib-diapasef : -o -c@0.97 : output/diann-hela-diapasef.blib : diann-hela-diapasef.check : $(TEST_INPUTS_PATH)/diann-hela-diapasef-lib.speclib ;
+blib-test-build-basic diann-mod-test : -o -c@0 : $(TEST_INPUTS_PATH)/diann-mod-test.tsv.speclib ;
+blib-test-build-basic diann-mass-mod-test : -o -c@0 : $(TEST_INPUTS_PATH)/diann-mass-mods.tsv.speclib ;
+blib-test-build-basic msfragger-diann : -o -c@0 : $(TEST_INPUTS_PATH)/library.tsv.speclib ;
+blib-test-build-basic msfragger-diann-predicted : -o -c@0 : $(TEST_INPUTS_PATH)/diann-predicted/lib.predicted.speclib ;
+blib-test-build diann2-synchro-pasef : -o -c@0 : output/diann2-synchro-pasef.blib : diann2-synchro-pasef.check : $(TEST_INPUTS_PATH)/diann2-synchro-pasef/report-lib.parquet.skyline.speclib : <toolset>gcc:<build>no <runtime-debugging>on:<build>no ;
+blib-test-build diann2-parquet : -o -c@0 : output/diann2-parquet.blib : diann2-parquet.check : $(TEST_INPUTS_PATH)/diann2-parquet/report-lib.parquet.skyline.speclib : <toolset>gcc:<build>no <runtime-debugging>on:<build>no ;
 
 # Test Bruker Paser TSV format
 blib-test-build-basic paser-hela-dia : -o : $(TEST_INPUTS_PATH)/paser/hela_dia_normalizationOFF_results.tsv ;

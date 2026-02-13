@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: John Chilton <jchilton .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -25,13 +25,13 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
-using System.Windows.Forms; // for IWin32Window used by ILongWaitBroker
 using System.Xml;
 using System.Xml.Serialization;
 using pwiz.PanoramaClient;
 using pwiz.Common.Collections;
 using pwiz.Common.DataBinding;
 using pwiz.Common.SystemUtil;
+using pwiz.CommonMsData;
 using pwiz.ProteowizardWrapper;
 using pwiz.Skyline.Controls.Databinding;
 using pwiz.Skyline.Model;
@@ -921,7 +921,7 @@ namespace pwiz.Skyline
                 }
                 else
                 {
-                    sharedFileName = FileEx.GetTimeStampedFileName(_skylineFile);
+                    sharedFileName = FileTimeEx.GetTimeStampedFileName(_skylineFile);
                 }
                 var sharedFilePath = Path.Combine(sharedFileDir, sharedFileName);
                 if (!ShareDocument(_doc, _skylineFile, sharedFilePath, commandArgs.SharedFileType, _out, commandArgs))
@@ -1409,6 +1409,14 @@ namespace pwiz.Skyline
 
         public bool OpenSkyFile(string skylineFile)
         {
+            // Pre-validate: detect mass spec data files and other non-Skyline files before attempting XML parsing
+            if (File.Exists(skylineFile) && !SrmDocument.IsSkylineFile(skylineFile, out var explained))
+            {
+                _out.WriteLine(Resources.CommandLine_OpenSkyFile_Error__There_was_an_error_opening_the_file__0_, skylineFile);
+                _out.WriteLine(explained);
+                return false;
+            }
+
             try
             {
                 var progressMonitor = new CommandProgressMonitor(_out, new ProgressStatus(string.Empty));
@@ -2293,8 +2301,8 @@ namespace pwiz.Skyline
                 if (fastaPath.IsNullOrEmpty())
                     throw new ArgumentException(Resources.CommandLine_AssociateProteins_a_FASTA_file_must_be_imported_before_associating_proteins);
                 _out.WriteLine(Resources.CommandLine_AssociateProteins_Associating_peptides_with_proteins_from_FASTA_file__0_, Path.GetFileName(fastaPath));
-                var progressMonitor = new CommandProgressMonitor(_out, new ProgressStatus(String.Empty));
-                var proteinAssociation = new ProteinAssociation(Document, progressMonitor);
+                var progressMonitor = new CommandProgressMonitor(_out, new ProgressStatus(ProteomeResources.ProteinAssociation_ListPeptidesForMatching_Building_peptide_prefix_tree));
+                var proteinAssociation = new ProteinAssociation(Document, progressMonitor.CancellationToken);
                 proteinAssociation.UseFastaFile(fastaPath, progressMonitor);
                 proteinAssociation.ApplyParsimonyOptions(commandArgs.AssociateProteinsGroupProteins.GetValueOrDefault(),
                     commandArgs.AssociateProteinsGeneLevelParsimony.GetValueOrDefault(),
@@ -2642,6 +2650,11 @@ namespace pwiz.Skyline
                         _out.WriteLine(SkylineResources.CommandLine_ReintegratePeaks_Error__Unknown_peak_scoring_model___0__);
                         return false;
                     }
+                    if (Equals(scoringModel, LegacyScoringModel.DEFAULT_UNTRAINED_MODEL))
+                    {
+                        scoringModel = LegacyScoringModel.DEFAULT_MODEL;
+                    }
+
                     modelAndFeatures = new ModelAndFeatures(scoringModel, null);
                 }
 
@@ -2704,7 +2717,7 @@ namespace pwiz.Skyline
                 // But then set to NaN the weights that have unknown values for this dataset
                 for (int i = 0; i < initialWeights.Length; ++i)
                 {
-                    if (!targetDecoyGenerator.EligibleScores[i])
+                    if (!targetDecoyGenerator.EligibleScores[i].EnabledByDefault)
                         initialWeights[i] = double.NaN;
                 }
                 var initialParams = new LinearModelParams(initialWeights);
@@ -3007,7 +3020,7 @@ namespace pwiz.Skyline
                         prediction.ChangeRetentionTime(retentionTimeRegression)));
                 }
                 string dbPath = calcIrt.DatabasePath;
-                IrtDb db = IrtDb.GetIrtDb(dbPath, null);
+                IrtDb db = IrtDb.GetIrtDb(dbPath);
                 if (checkPeptides)
                 {
                     var standards = docNew.Molecules.Where(m => db.IsStandard(m.ModifiedTarget)).ToArray();
@@ -3991,6 +4004,42 @@ namespace pwiz.Skyline
 
             if (Equals(type, ExportFileType.Method))
             {
+                // If the instrument type is either just Thermo or a Thermo instrument type that
+                // support the TNG XML method API
+                string thermoInstallationType = ExportInstrumentType.ThermoInstallationType(args.MethodInstrumentType);
+                if (thermoInstallationType != null || Equals(args.MethodInstrumentType, ExportInstrumentType.THERMO))
+                {
+                    var dllFinder = new ThermoDllFinder();
+                    var thermoSoftwareInfo = dllFinder.GetSoftwareInfo();   // CONSIDER: This behaves differently for tests on a computer with Thermo software installed
+                    if (thermoSoftwareInfo.InstrumentType == null)
+                    {
+                        _out.WriteLine(TextUtil.SpaceSeparate(Resources.CommandStatusWriter_WriteLine_Error_,
+                            ModelResources.ThermoMassListExporter_EnsureLibraries_Failed_to_find_a_valid_Thermo_instrument_installation_));
+                        _out.WriteLine(thermoSoftwareInfo.FailureReason);
+                        return false;
+                    }
+                    // If not generally exporting a Thermo method, and the instrument type
+                    // specified does not match the installed type, then error.
+                    else if (Equals(args.MethodInstrumentType, ExportInstrumentType.THERMO))
+                    {
+                        var instrumentType = ExportInstrumentType.ThermoTypeFromInstallationType(thermoSoftwareInfo.InstrumentType);
+                        if (instrumentType == null)
+                        {
+                            _out.WriteLine(TextUtil.SpaceSeparate(Resources.CommandStatusWriter_WriteLine_Error_, 
+                                string.Format(ModelResources.ThermoMassListExporter_EnsureLibraries_Unknown_Thermo_instrument_type___0___installed_, thermoSoftwareInfo.InstrumentType)));
+                            return false;
+                        }
+
+                        args.MethodInstrumentType = instrumentType;
+                    }
+                    else if (!Equals(thermoSoftwareInfo.InstrumentType, thermoInstallationType))
+                    {
+                        _out.WriteLine(ModelResources.CommandLine_ExportInstrumentFile_Error__The_specified_instrument_type___0___does_not_match_the_installed_software___1___,
+                            args.MethodInstrumentType, thermoSoftwareInfo.InstrumentType);
+                        _out.WriteLine(ModelResources.CommandLine_ExportInstrumentFile_Use_the_instrument_type__Thermo__to_export_a_method_with_the_installed_software_);
+                        return false;
+                    }
+                }
                 if (string.IsNullOrEmpty(args.TemplateFile))
                 {
                     _out.WriteLine(Resources.CommandLine_ExportInstrumentFile_Error__A_template_file_is_required_to_export_a_method_);
@@ -4523,7 +4572,7 @@ namespace pwiz.Skyline
                 {
                     return false;
                 }
-                var zipFilePath = FileEx.GetTimeStampedFileName(documentPath);
+                var zipFilePath = FileTimeEx.GetTimeStampedFileName(documentPath);
                 var published = false;
                 if (ShareDocument(document, documentPath, zipFilePath, selectedShareType, _statusWriter, commandArgs))
                 {
@@ -4537,12 +4586,12 @@ namespace pwiz.Skyline
 
             private bool PublishDocToPanorama(PanoramaServer panoramaServer, string zipFilePath, string panoramaFolder)
             {
-                var waitBroker = new CommandProgressMonitor(_statusWriter,
-                    new ProgressStatus(SkylineResources.PanoramaPublishHelper_PublishDocToPanorama_Uploading_document_to_Panorama));
+                IProgressStatus progressStatus = new ProgressStatus(SkylineResources.PanoramaPublishHelper_PublishDocToPanorama_Uploading_document_to_Panorama);
+                IProgressMonitor progressMonitor = new CommandProgressMonitor(_statusWriter, progressStatus);
                 IPanoramaClient publishClient = new WebPanoramaClient(panoramaServer.URI, panoramaServer.Username, panoramaServer.Password);
                 try
                 {
-                    publishClient.SendZipFile(panoramaFolder, zipFilePath, waitBroker);
+                    publishClient.SendZipFile(panoramaFolder, zipFilePath, progressMonitor, progressStatus);
                     return true;
                 }
                 catch (Exception x)
@@ -4944,11 +4993,6 @@ namespace pwiz.Skyline
         public bool IsDocumentChanged(SrmDocument docOrig)
         {
             return true;
-        }
-
-        public DialogResult ShowDialog(Func<IWin32Window, DialogResult> show)
-        {
-            return DialogResult.OK;
         }
 
         public void SetProgressCheckCancel(int step, int totalSteps)

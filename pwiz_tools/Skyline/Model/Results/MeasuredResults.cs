@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Brendan MacLean <brendanx .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -25,6 +25,7 @@ using System.Xml.Schema;
 using System.Xml.Serialization;
 using pwiz.Common.Collections;
 using pwiz.Common.SystemUtil;
+using pwiz.CommonMsData;
 using pwiz.Skyline.Model.Results.Spectra;
 using pwiz.Skyline.Util;
 using pwiz.Skyline.Util.Extensions;
@@ -34,8 +35,6 @@ namespace pwiz.Skyline.Model.Results
     [XmlRoot("measured_results")]
     public sealed class MeasuredResults : Immutable, IXmlSerializable
     {
-        public static readonly MeasuredResults EMPTY = new MeasuredResults(new ChromatogramSet[0]);
-
         private static readonly HashSet<MsDataFileUri> EMPTY_FILES = new HashSet<MsDataFileUri>();
 
         private ImmutableList<ChromatogramSet> _chromatograms;
@@ -63,10 +62,17 @@ namespace pwiz.Skyline.Model.Results
             IsTimeNormalArea = true;
         }
 
-        public bool IsEmpty
+        /// <summary>
+        /// Returns null if Chromatograms is empty to help with assignment
+        /// to SrmSettings, which does not allow MeasuredResults with empty
+        /// Chromatograms, but requires null instead in this case.
+        /// </summary>
+        public MeasuredResults NullIfEmpty()
         {
-            get { return _chromatograms == null || _chromatograms.Count == 0; }
+            return Chromatograms.Count == 0 ? null : this;
         }
+
+        public ChromatogramCache CacheFinal => _cacheFinal;
 
         [TrackChildren]
         public IList<ChromatogramSet> Chromatograms
@@ -241,6 +247,13 @@ namespace pwiz.Skyline.Model.Results
         {
             return (_cacheFinal != null && Equals(cachePath, _cacheFinal.CachePath)) ||
                 (_listPartialCaches != null && _listPartialCaches.Contains(cache => Equals(cachePath, cache.CachePath)));
+        }
+
+        public bool FinalCacheIncomplete { get; private set; }
+
+        public MeasuredResults ChangeFinalCacheIncomplete(bool value)
+        {
+            return ChangeProp(ImClone(this), im => im.FinalCacheIncomplete = value);
         }
 
         /// <summary>
@@ -537,36 +550,35 @@ namespace pwiz.Skyline.Model.Results
         public MeasuredResults UpdateCaches(string documentPath, MeasuredResults resultsCache)
         {
             // Clone the current node, and update its cache properties.
-            var results = ImClone(this);
-
-            // Make sure peaks are adjusted as chromatograms are rescored
-            if (resultsCache._cacheRecalc != null &&
-                resultsCache._listPartialCaches != null)
+            return ChangeProp(ImClone(this), results =>
             {
-                results.Chromatograms = results.GetRescoredChromatograms(resultsCache);
-            }
+                // Make sure peaks are adjusted as chromatograms are rescored
+                if (resultsCache._cacheRecalc != null &&
+                    resultsCache._listPartialCaches != null)
+                {
+                    results.Chromatograms = results.GetRescoredChromatograms(resultsCache);
+                }
 
-            results.UpdateClonedCaches(resultsCache);
+                results.UpdateClonedCaches(resultsCache);
 
-            results.IsResultsUpdateRequired = resultsCache.IsResultsUpdateRequired;
-            results.IsDeserialized = false;
+                results.IsResultsUpdateRequired = resultsCache.IsResultsUpdateRequired;
+                results.IsDeserialized = false;
 
-            string cachePath = ChromatogramCache.FinalPathForName(documentPath, null);
-            var cachedFiles = results.CachedFileInfos.Distinct(new PathComparer<ChromCachedFile>()).ToArray();
-            var dictCachedFiles = cachedFiles.ToDictionary(cachedFile => cachedFile.FilePath.GetLocation()); // Ignore centroiding, combineIMS etc for key purposes
-            var enumCachedNames = cachedFiles.Select(cachedFile => cachedFile.FilePath.GetFileName());
-            var setCachedFileNames = new HashSet<string>(enumCachedNames);
-            var chromatogramSets = new List<ChromatogramSet>();
-            foreach (var chromSet in results.Chromatograms)
-            {
-                chromatogramSets.Add(chromSet.ChangeFileCacheFlags(
-                    dictCachedFiles, setCachedFileNames, cachePath));
-            }
+                string cachePath = ChromatogramCache.FinalPathForName(documentPath, null);
+                var cachedFiles = results.CachedFileInfos.Distinct(new PathComparer<ChromCachedFile>()).ToArray();
+                var dictCachedFiles = cachedFiles.ToDictionary(cachedFile => cachedFile.FilePath.GetLocation()); // Ignore centroiding, combineIMS etc for key purposes
+                var enumCachedNames = cachedFiles.Select(cachedFile => cachedFile.FilePath.GetFileName());
+                var setCachedFileNames = new HashSet<string>(enumCachedNames);
+                var chromatogramSets = new List<ChromatogramSet>();
+                foreach (var chromSet in results.Chromatograms)
+                {
+                    chromatogramSets.Add(chromSet.ChangeFileCacheFlags(
+                        dictCachedFiles, setCachedFileNames, cachePath));
+                }
 
-            if (!ArrayUtil.ReferencesEqual(chromatogramSets, results.Chromatograms))
-                results.Chromatograms = chromatogramSets;
-
-            return results;
+                if (!ArrayUtil.ReferencesEqual(chromatogramSets, results.Chromatograms))
+                    results.Chromatograms = chromatogramSets;
+            });
         }
 
         private void UpdateClonedCaches(MeasuredResults resultsCache)
@@ -774,6 +786,16 @@ namespace pwiz.Skyline.Model.Results
         {
             return ChangeChromatograms(Chromatograms.Select(chrom => chrom.ChangeMSDataFileInfos(
                 chrom.MSDataFileInfos.Select(info => info.ChangeImportTime(null)).ToList())).ToList());
+        }
+
+        /// <summary>
+        /// Sets the FileWriteTimes on all of the ChromFileInfo's to null so that they will not
+        /// interfere with comparisons in tests.
+        /// </summary>
+        public MeasuredResults ClearFileWriteTimes()
+        {
+            return ChangeChromatograms(Chromatograms.Select(chrom => chrom.ChangeMSDataFileInfos(
+                chrom.MSDataFileInfos.Select(info => info.ChangeFileWriteTime(null)).ToList())).ToList());
         }
 
         public IEnumerable<string> QcTraceNames
@@ -985,6 +1007,11 @@ namespace pwiz.Skyline.Model.Results
             });
         }
 
+        /// <summary>
+        /// Change the list of ChromSets. Pass null to fully reset the list. Passing a zero-length list
+        /// causes undefined behavior so throws <see cref="ArgumentException"/>.
+        /// </summary>
+        /// <exception cref="ArgumentException">Thrown if caller passes a zero-length list. Pass null instead.</exception>
         public MeasuredResults ChangeChromatograms(IList<ChromatogramSet> prop)
         {
             var results = ChangeProp(ImClone(this), im => im.Chromatograms = prop);
@@ -1283,6 +1310,42 @@ namespace pwiz.Skyline.Model.Results
             SetClonedCacheState(null);
         }
 
+        public MeasuredResults LoadFinalCache(string cachePath, IProgressStatus status, ILoadMonitor loader, SrmDocument doc)
+        {
+            if (!File.Exists(cachePath))
+            {
+                return ChangeFinalCacheIncomplete(true);
+            }
+
+            using var stream = File.OpenRead(cachePath);
+            var cachedFilePaths = ChromatogramCache.GetCachedFilePaths(stream).ToHashSet();
+            if (!Chromatograms.SelectMany(chrom => chrom.MSDataFilePaths).All(cachedFilePaths.Contains))
+            {
+                return null;
+            }
+
+            ChromatogramCache chromatogramCache;
+            try
+            {
+                chromatogramCache = ChromatogramCache.Load(cachePath, status, loader, doc);
+            }
+            catch (Exception)
+            {
+                chromatogramCache = null;
+            }
+
+            if (chromatogramCache == null)
+            {
+                return ChangeFinalCacheIncomplete(true);
+            }
+
+            return ChangeProp(ImClone(this), im =>
+            {
+                im.SetClonedCacheState(chromatogramCache);
+                im.Chromatograms = Chromatograms;
+            });
+        }
+
         #endregion
 
         #region Implementation of IXmlSerializable
@@ -1343,7 +1406,7 @@ namespace pwiz.Skyline.Model.Results
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
-            return ArrayUtil.EqualsDeep(obj._chromatograms, _chromatograms);
+            return ArrayUtil.EqualsDeep(obj._chromatograms, _chromatograms) && obj.FinalCacheIncomplete == FinalCacheIncomplete;
         }
 
         public override bool Equals(object obj)

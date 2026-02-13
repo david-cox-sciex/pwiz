@@ -1,4 +1,4 @@
-﻿//
+//
 // $Id$
 //
 //
@@ -40,10 +40,12 @@
 #include "pwiz/utility/misc/Filesystem.hpp"
 #include "pwiz/utility/misc/Std.hpp"
 #include "pwiz/utility/misc/SHA1Calculator.hpp"
+#include "pwiz/utility/misc/Timer.hpp"
 #include "boost/thread/thread.hpp"
 #include "boost/thread/barrier.hpp"
 #include "boost/locale/encoding_utf.hpp"
 #include "pwiz/data/msdata/Serializer_mzML.hpp"
+#include "pwiz/utility/minimxml/XMLWriter.hpp"
 
 
 using namespace pwiz::util;
@@ -60,9 +62,22 @@ namespace util {
 
 namespace {
 
-const std::vector<CVID> excludedSpectra =
+struct TestTimer : Timer
 {
-    MS_electromagnetic_radiation_spectrum
+    TestTimer(const string& rawpath, const string& caption, bool reportTiming)
+    : caption_(caption), rawpath_(rawpath), reportTiming_(reportTiming)
+    {
+    }
+
+    ~TestTimer()
+    {
+        if (reportTiming_)
+            cerr << caption_ << " (" << rawpath_ << "): " << elapsed() << "s" << endl;
+    }
+
+    string caption_;
+    string rawpath_;
+    bool reportTiming_;
 };
 
 void testAccept(const Reader& reader, const string& rawpath)
@@ -86,8 +101,11 @@ void mangleSourceFileLocations(const string& sourceName, vector<SourceFilePtr>& 
             size_t sourceNameInLocation = newSourceName.empty() ? sourceFilePtr->location.find(sourceName) : min(sourceFilePtr->location.find(sourceName), sourceFilePtr->location.find(newSourceName));
             if (sourceNameInLocation != string::npos)
             {
-                sourceFilePtr->location.erase(0, sourceNameInLocation);
-                sourceFilePtr->location = "file:///" + newSourceName.empty() ? sourceName : newSourceName;
+                string location = sourceFilePtr->location;
+                location.erase(0, sourceNameInLocation);
+                if (!newSourceName.empty() && !bal::contains(location, newSourceName))
+                    bal::replace_all(location, sourceName, newSourceName);
+                sourceFilePtr->location = string("file:///") + location;
             }
             else
                 sourceFilePtr->location = "file:///";
@@ -157,7 +175,7 @@ void calculateSourceFileChecksums(vector<SourceFilePtr>& sourceFiles)
 }
 
 
-void hackInMemoryMSData(const string& sourceName, MSData& msd, const ReaderTestConfig& config, const string& newSourceName = "")
+void hackInMemoryMSData(const string& sourceName, MSData& msd, const ReaderTestConfig& config, DiffConfig* diffConfig = nullptr, const string& newSourceName = "")
 {
     // remove metadata ptrs appended on read
     vector<SourceFilePtr>& sfs = msd.fileDescription.sourceFilePtrs;
@@ -182,10 +200,57 @@ void hackInMemoryMSData(const string& sourceName, MSData& msd, const ReaderTestC
 
     // set current DataProcessing to the original conversion
     // NOTE: this only works for vendor readers that use a single dataProcessing element
+    // also update id values with the new source name if any (e.g. Bruker FID, where id is a path)
     SpectrumListBase* sl = dynamic_cast<SpectrumListBase*>(msd.run.spectrumListPtr.get());
     ChromatogramListBase* cl = dynamic_cast<ChromatogramListBase*>(msd.run.chromatogramListPtr.get());
-    if (sl) sl->setDataProcessingPtr(msd.dataProcessingPtrs[0]);
-    if (cl) cl->setDataProcessingPtr(msd.dataProcessingPtrs[0]);
+    if (sl)
+    {
+        sl->setDataProcessingPtr(msd.dataProcessingPtrs[0]);
+        if (!newSourceName.empty())
+        {
+            string sourceNameEscaped = minimxml::encode_xml_id_copy(sourceName);
+            string newSourceNameEscaped = minimxml::encode_xml_id_copy(newSourceName);
+            for (size_t index = 0; index < sl->size(); ++index)
+            {
+                SpectrumPtr s = sl->spectrum(index);
+                // in some cases the id may be a path e.g. Bruker FID
+                if (bal::contains(s->id, sourceNameEscaped) && !bal::contains(s->id, newSourceNameEscaped))
+                {
+                    bal::replace_all(s->id,sourceNameEscaped, newSourceNameEscaped);
+                    if (diffConfig != nullptr)
+                    {
+                        // likely that stale identity index will trip up the test for FID data
+                        // but indexing is not part of msd, not worth the trouble to dig down to force reindex
+                        diffConfig->ignoreIdentity = true;
+                    }
+                }
+            }
+        }
+    }
+    if (cl)
+    {
+        cl->setDataProcessingPtr(msd.dataProcessingPtrs[0]);
+        if (!newSourceName.empty())
+        {
+            string sourceNameEscaped = minimxml::encode_xml_id_copy(sourceName);
+            string newSourceNameEscaped = minimxml::encode_xml_id_copy(newSourceName);
+            for (size_t index = 0; index < cl->size(); ++index)
+            {
+                ChromatogramPtr c = cl->chromatogram(index);
+                // in some cases the id may be a path e.g. Bruker FID
+                if (bal::contains(c->id, sourceNameEscaped) && !bal::contains(c->id, newSourceNameEscaped))
+                {
+                    bal::replace_all(c->id, sourceNameEscaped, newSourceNameEscaped);
+                    if (diffConfig != nullptr)
+                    {
+                        // likely that stale identity index will trip up the test for FID data
+                        // but indexing is not part of msd, not worth the trouble to dig down to force reindex
+                        diffConfig->ignoreIdentity = true;
+                    }
+                }
+            }
+        }
+    }
 }
 
 
@@ -284,7 +349,11 @@ void testRead(const Reader& reader, const string& rawpath, const bfs::path& pare
     // read file into MSData object
     vector<MSDataPtr> msds;
     string rawheader = pwiz::util::read_file_header(rawpath, 512);
-    reader.read(rawpath, rawheader, msds, readerConfig);
+
+    {
+        TestTimer readTimer(rawpath, "Reader::read", config.reportTimings);
+        reader.read(rawpath, rawheader, msds, readerConfig);
+    }
 
     string sourceName = BFS_STRING(bfs::path(rawpath).filename());
 
@@ -303,12 +372,15 @@ void testRead(const Reader& reader, const string& rawpath, const bfs::path& pare
 
         bfs::path targetResultFilename = parentPath / config.resultFilename(msd.run.id + ".mzML");
         MSDataFile targetResult(targetResultFilename.string());
-        hackInMemoryMSData(sourceName, targetResult, config);
+        hackInMemoryMSData(sourceName, targetResult, config); // Make it path-agnostic
 
         // test for 1:1 equality with the target mzML
-        Diff<MSData, DiffConfig> diff(msd, targetResult, diffConfig);
-        if (diff) cerr << headDiff(diff, 5000) << endl;
-        unit_assert(!diff);
+        {
+            TestTimer diffTimer(rawpath, "Diff_mzML", config.reportTimings);
+            Diff<MSData, DiffConfig> diff(msd, targetResult, diffConfig);
+            if (diff) cerr << headDiff(diff, 5000) << endl;
+            unit_assert(!diff);
+        }
 
         // test ion mobility conversion
         auto imsl = boost::dynamic_pointer_cast<SpectrumListIonMobilityBase>(msd.run.spectrumListPtr);
@@ -333,6 +405,7 @@ void testRead(const Reader& reader, const string& rawpath, const bfs::path& pare
         // test that non-IMS peak picked data have unique m/z values
         if (config.peakPicking && !config.combineIonMobilitySpectra && vendorMsd.run.spectrumListPtr)
         {
+            TestTimer duplicatesCheckTimer(rawpath, "Duplicates check", config.reportTimings);
             const auto& sl = *vendorMsd.run.spectrumListPtr;
             ostringstream ss;
 
@@ -388,6 +461,7 @@ void testRead(const Reader& reader, const string& rawpath, const bfs::path& pare
 
                 DiffConfig diffConfig_mz5(diffConfig);
                 diffConfig_mz5.ignoreExtraBinaryDataArrays = true;
+                TestTimer diffTimer_mz5(rawpath, "Diff_mz5", config.reportTimings);
                 Diff<MSData, DiffConfig> diff_mz5(vendorMsd, msd_mz5, diffConfig_mz5);
                 if (diff_mz5) cerr << headDiff(diff_mz5, 5000) << endl;
                 unit_assert(!diff_mz5);
@@ -518,15 +592,22 @@ void testRead(const Reader& reader, const string& rawpath, const bfs::path& pare
                 config_mzXML.binaryDataEncoderConfig.compression = BinaryDataEncoder::Compression_Zlib;
                 config_mzXML.binaryDataEncoderConfig.precision = BinaryDataEncoder::Precision_32;
             }
+
             Serializer_mzXML serializer_mzXML(config_mzXML);
-            serializer_mzXML.write(*stringstreamPtr, vendorMsd);
+            {
+                TestTimer writeTimer_mzXML(rawpath, "Write_mzXML", config.reportTimings);
+                serializer_mzXML.write(*stringstreamPtr, vendorMsd);
+            }
             if (os_) *os_ << "mzXML:\n" << stringstreamPtr->str() << endl;
             serializer_mzXML.read(serializedStreamPtr, msd_mzXML);
 
-            Diff<MSData, DiffConfig> diff_mzXML(vendorMsd, msd_mzXML, diffConfig_non_mzML);
-            if (diff_mzXML && !os_) cerr << "mzXML:\n" << headStream(*serializedStreamPtr, 5000) << endl;
-            if (diff_mzXML) cerr << headDiff(diff_mzXML, 5000) << endl;
-            unit_assert(!diff_mzXML);
+            {
+                TestTimer diffTimer_mzXML(rawpath, "Diff_mzXML", config.reportTimings);
+                Diff<MSData, DiffConfig> diff_mzXML(vendorMsd, msd_mzXML, diffConfig_non_mzML);
+                if (diff_mzXML && !os_) cerr << "mzXML:\n" << headStream(*serializedStreamPtr, 5000) << endl;
+                if (diff_mzXML) cerr << headDiff(diff_mzXML, 5000) << endl;
+                unit_assert(!diff_mzXML);
+            }
         }
     }
 
@@ -561,7 +642,6 @@ void testRead(const Reader& reader, const string& rawpath, const bfs::path& pare
     bfs::path rawpathPath(rawpath);
     bfs::path newRawPath = bfs::current_path() / rawpathPath.filename();
     vector<bfs::path> extraCopiedPaths;
-    const auto& oldExtension = newRawPath.extension().native();
     newRawPath = newRawPath.replace_extension().native() + unicodeTestString + newRawPath.extension().native();
     if (bfs::exists(newRawPath))
         bfs::remove_all(newRawPath);
@@ -615,10 +695,11 @@ void testRead(const Reader& reader, const string& rawpath, const bfs::path& pare
 
             if (os_) TextWriter(*os_, 0)(msd);
 
+            // Locate the canonical version of the mzML result, and make it path-agnostic
             bfs::path::string_type targetResultFilename = (parentPath / config.resultFilename(msd.run.id + ".mzML")).native();
             bal::replace_all(targetResultFilename, unicodeTestString, L"");
             MSDataFile targetResult(bfs::path(targetResultFilename).string());
-            hackInMemoryMSData(sourceNameAsPath.string(), targetResult, config, newSourceName.string());
+            hackInMemoryMSData(sourceNameAsPath.string(), targetResult, config, &diffConfig,newSourceName.string());
 
             // test for 1:1 equality with the target mzML
             Diff<MSData, DiffConfig> diff(msd, targetResult, diffConfig);

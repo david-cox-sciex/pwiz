@@ -171,6 +171,9 @@
   <data name="ApexTotalIonCountMS1">
     <value>Apex Total Ion Count MS1</value>
   </data>
+  <data name="ApexTransitionIonCount">
+    <value>Apex Transition Ion Count</value>
+  </data>
   <data name="Area">
     <value>Area</value>
   </data>
@@ -321,6 +324,9 @@
   <data name="ConfidenceLevel">
     <value>Confidence Level</value>
   </data>
+  <data name="ConstantNeutralLoss">
+    <value>Constant Neutral Loss</value>
+  </data>
   <data name="CountTruncated">
     <value>Count Truncated</value>
   </data>
@@ -384,6 +390,9 @@
   <data name="DetectionZScore">
     <value>Detection Z Score</value>
   </data>
+  <data name="DissociationMethod">
+    <value>Dissociation Method</value>
+  </data>
   <data name="DriftTimeFragment">
     <value>Drift Time Fragment</value>
   </data>
@@ -407,6 +416,30 @@
   </data>
   <data name="ExcludeFromCalibration">
     <value>Exclude From Calibration</value>
+  </data>
+  <data name="ExemplaryEndTime">
+    <value>Exemplary End Time</value>
+  </data>
+  <data name="ExemplaryFilePath">
+    <value>Exemplary File Path</value>
+  </data>
+  <data name="ExemplaryLibraryName">
+    <value>Exemplary Library Name</value>
+  </data>
+  <data name="ExemplaryPeak">
+    <value>Exemplary Peak</value>
+  </data>
+  <data name="ExemplaryReplicateName">
+    <value>Exemplary Replicate Name</value>
+  </data>
+  <data name="ExemplaryRetentionTime">
+    <value>Exemplary Retention Time</value>
+  </data>
+  <data name="ExemplaryScore">
+    <value>Exemplary Score</value>
+  </data>
+  <data name="ExemplaryStartTime">
+    <value>Exemplary Start Time</value>
   </data>
   <data name="ExplicitAnalyteConcentration">
     <value>Explicit Analyte Concentration</value>
@@ -512,6 +545,15 @@
   </data>
   <data name="Identified">
     <value>Identified</value>
+  </data>
+  <data name="ImputedEndTime">
+    <value>Imputed End Time</value>
+  </data>
+  <data name="ImputedPeak">
+    <value>Imputed Peak</value>
+  </data>
+  <data name="ImputedStartTime">
+    <value>Imputed Start Time</value>
   </data>
   <data name="InChI">
     <value>InChI</value>
@@ -638,6 +680,9 @@
   </data>
   <data name="LcPeakTotalIonCurrentAreaMS1">
     <value>LC Peak Total Ion Current Area MS1</value>
+  </data>
+  <data name="LcPeakTransitionIonCount">
+    <value>LC Peak Transition Ion Count</value>
   </data>
   <data name="LibraryCollisionCrossSection">
     <value>Library Collision Cross Section</value>
@@ -846,6 +891,9 @@
   <data name="MoleculeListAbundanceMessage">
     <value>Molecule List Abundance Message</value>
   </data>
+  <data name="MoleculeListAbundanceRaw">
+    <value>Molecule List Abundance Raw</value>
+  </data>
   <data name="MoleculeListAbundanceStrict">
     <value>Molecule List Abundance Strict</value>
   </data>
@@ -947,6 +995,21 @@
   </data>
   <data name="OptStep">
     <value>Opt Step</value>
+  </data>
+  <data name="OriginalEndTime">
+    <value>Original End Time</value>
+  </data>
+  <data name="OriginalPeak">
+    <value>Original Peak</value>
+  </data>
+  <data name="OriginalRetentionTime">
+    <value>Original Retention Time</value>
+  </data>
+  <data name="OriginalScore">
+    <value>Original Score</value>
+  </data>
+  <data name="OriginalStartTime">
+    <value>Original Start Time</value>
   </data>
   <data name="PeakGroupEndTime">
     <value>Peak Group End Time</value>
@@ -1158,6 +1221,9 @@
   <data name="ProductNeutralMass">
     <value>Product Neutral Mass</value>
   </data>
+  <data name="ProportionTruncated">
+    <value>Proportion Truncated</value>
+  </data>
   <data name="Protein">
     <value>Protein</value>
   </data>
@@ -1166,6 +1232,9 @@
   </data>
   <data name="ProteinAbundanceMessage">
     <value>Protein Abundance Message</value>
+  </data>
+  <data name="ProteinAbundanceRaw">
+    <value>Protein Abundance Raw</value>
   </data>
   <data name="ProteinAbundanceStrict">
     <value>Protein Abundance Strict</value>
@@ -1271,6 +1340,21 @@
   </data>
   <data name="Reason">
     <value>Reason</value>
+  </data>
+  <data name="ReintegratedEndTime">
+    <value>Reintegrated End Time</value>
+  </data>
+  <data name="ReintegratedPeak">
+    <value>Reintegrated Peak</value>
+  </data>
+  <data name="ReintegratedRetentionTime">
+    <value>Reintegrated Retention Time</value>
+  </data>
+  <data name="ReintegratedScore">
+    <value>Reintegrated Score</value>
+  </data>
+  <data name="ReintegratedStartTime">
+    <value>Reintegrated Start Time</value>
   </data>
   <data name="Replicate">
     <value>Replicate</value>
@@ -1487,6 +1571,9 @@
   </data>
   <data name="TransitionCount">
     <value>Transition Count</value>
+  </data>
+  <data name="TransitionIonMetrics">
+    <value>Transition Ion Metrics</value>
   </data>
   <data name="TransitionIsDecoy">
     <value>Transition Is Decoy</value>

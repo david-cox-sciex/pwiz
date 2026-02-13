@@ -125,6 +125,36 @@
     <value>スペクトルの収集に使用したアナライザーの種類です。
 1つ以上のアナライザーが使用された場合、アナライザー名はスラッシュで区切られます。</value>
   </data>
+  <data name="ApexAnalyteIonCount">
+    <value>総トランジション強度とトランジション強度が最高のスペクトルの注入時間の積</value>
+  </data>
+  <data name="ApexAnalyteIonCountFragment">
+    <value>総トランジション強度とトランジション強度が最高のMS2スペクトルの注入時間の積</value>
+  </data>
+  <data name="ApexAnalyteIonCountMS1">
+    <value>総プリカーサー強度とプリカーサー強度が最高のMS1スペクトルの注入時間の積</value>
+  </data>
+  <data name="ApexSpectrumId">
+    <value>トランジション強度が最高のスペクトルの識別子</value>
+  </data>
+  <data name="ApexSpectrumIdFragment">
+    <value>トランジション強度が最高のMS2スペクトルの識別子</value>
+  </data>
+  <data name="ApexSpectrumIdMS1">
+    <value>プリカーサー強度が最高のMS1スペクトルの識別子</value>
+  </data>
+  <data name="ApexTotalIonCount">
+    <value>総イオン電流値とトランジション強度が最高のMS2スペクトルの注入時間の積</value>
+  </data>
+  <data name="ApexTotalIonCountFragment">
+    <value>総イオン電流値とトランジション強度が最高のMS2スペクトルの注入時間の積</value>
+  </data>
+  <data name="ApexTotalIonCountMS1">
+    <value>総プリカーサー強度とプリカーサー強度が最高のMS1スペクトルの注入時間の積</value>
+  </data>
+  <data name="ApexTransitionIonCount">
+    <value>トランジション抽出イオン強度が最高のスペクトルの強度と注入時間の積</value>
+  </data>
   <data name="Area">
     <value>トランジションピークの曲線下の面積（AUC）からバックグラウンドを引いたものです。</value>
   </data>
@@ -162,7 +192,7 @@
     <value>真の場合、Skylineは[トランジションの設定]フィルタ、スペクトルライブラリなどによってプリカーサーから自動的にトランジションを追加または削除します。</value>
   </data>
   <data name="AverageMassErrorPPM">
-    <value>平均質量誤差(PPM)</value>
+    <value>100万分の1(PPM)の単位で表される予測m/z値と測定m/z値の間の差のすべてのトランジションの面積加重平均</value>
   </data>
   <data name="AverageMasses">
     <value>「C[+57.05162]」のように平均質量で修飾部分を指定する、修飾シークエンスです。</value>
@@ -278,8 +308,13 @@
   <data name="ConfidenceLevel">
     <value>倍率変化を中心とする信頼区間を決定するのに使用された信頼度です。</value>
   </data>
+  <data name="ConstantNeutralLoss">
+    <value>コンスタントニュートラルロススキャンに対するアナライザーオフセット値 ‐ ニュートラルゲインのマイナス値を使用します。</value>
+  </data>
   <data name="CountTruncated">
-    <value>取得時間範囲内のピークの両側で強度が全体のピーク高さの1%より高い 範囲を積分するプリカーサーのトランジション数です。 </value>
+    <value>データ取得時間範囲のいずれかの終端の
+境界でピーク積分するプリカーサーのトランジション数。この場合、その終端の強度は
+もう一方の終端よりもバックグラウンドを差し引いたピーク高さが25%以上高いものを対象とします。</value>
   </data>
   <data name="Cv">
     <value>Cv</value>
@@ -341,6 +376,9 @@
   <data name="DetectionZScore">
     <value>mProphetモデルの適用後に選択された各ピーク（ターゲットおよびデコイ）に割り当てられる正規化されたmProphetスコアです。デコイスコアの平均から標準偏差（SD）の数として表現されます。</value>
   </data>
+  <data name="DissociationMethod">
+    <value>断片化方法（例：CID、HCD、ETD）</value>
+  </data>
   <data name="DriftTimeFragment">
     <value>フラグメントイオンのイオン移動度のドリフト時間（ミリ秒）です。衝突エネルギーがより大きいため、通常は移動が速くなります。（下位互換専用：推奨される用語はIonMobilityFragmentとIonMobilityUnitsです。）</value>
   </data>
@@ -364,6 +402,30 @@
   </data>
   <data name="ExcludeFromCalibration">
     <value>繰り返し測定結果をペプチドの校正曲線計算から除外すべきか。</value>
+  </data>
+  <data name="ExemplaryEndTime">
+    <value>最良スコアの繰り返し測定またはライブラリファイルのピークの正規化された保持終了時間</value>
+  </data>
+  <data name="ExemplaryFilePath">
+    <value>最良スコアのピークを含む結果ファイルのファイルパス</value>
+  </data>
+  <data name="ExemplaryLibraryName">
+    <value>最良スコアのピークを含むライブラリの名前</value>
+  </data>
+  <data name="ExemplaryPeak">
+    <value>ドキュメントの繰り返し測定のうちの1つ、またはライブラリの指定されたピーク境界のうち1つ、いずれかの最良スコアのピーク</value>
+  </data>
+  <data name="ExemplaryReplicateName">
+    <value>最良スコアのピークの繰り返し測定の名前</value>
+  </data>
+  <data name="ExemplaryRetentionTime">
+    <value>最良スコアのピークの頂点の正規化された保持時間</value>
+  </data>
+  <data name="ExemplaryScore">
+    <value>繰り返し測定またはライブラリいずれかの最高スコアのピークのスコア</value>
+  </data>
+  <data name="ExemplaryStartTime">
+    <value>最良スコアの繰り返し測定またはライブラリファイルのピークの正規化された保持開始時間</value>
   </data>
   <data name="ExplicitAnalyteConcentration">
     <value>この特定の繰り返し測定内のこの特定の分子またはペプチド濃度です。
@@ -472,6 +534,15 @@
   <data name="Identified">
     <value>ピークの積分の境界の間において結果ファイルにMS/MSペプチド同定がある場合には真となります。</value>
   </data>
+  <data name="ImputedEndTime">
+    <value>この繰り返し測定に対する保持時間アライメントを使用してマッピングされた最良スコアの繰り返し測定のピーク終了時間</value>
+  </data>
+  <data name="ImputedPeak">
+    <value>この繰り返し測定に対する保持時間アライメントを使用してマッピングされた最良スコアの繰り返し測定のピーク境界</value>
+  </data>
+  <data name="ImputedStartTime">
+    <value>この繰り返し測定に対する保持時間アライメントを使用してマッピングされた最良スコアの繰り返し測定のピーク開始時間</value>
+  </data>
   <data name="InChI" xml:space="preserve">
     <value>標準分子ID</value>
   </data>
@@ -535,6 +606,10 @@
   <data name="IsDecoy">
     <value>デコイのプリカーサーであれば真です。</value>
   </data>
+  <data name="IsolationWindowWidth">
+    <value>プリカーサ―が単離されたm/zウィンドウの幅。
+2つ以上のプリカーサーが単離された場合、単離ウィンドウ幅は、各プリカーサー周囲のウィンドウの合計となります。</value>
+  </data>
   <data name="IsotopeDistIndex">
     <value>モノアイソトピックピークであればゼロ、M+1であれば1、M+2であれば2などとなります。 </value>
   </data>
@@ -561,6 +636,42 @@
   </data>
   <data name="LastPosition">
     <value>ペプチドに含まれるタンパク質シークエンスの最後の（C末端）アミノ酸の位置です。タンパク質シークエンスがない場合には#N/Aとなります。</value>
+  </data>
+  <data name="LcPeakAnalyteIonCount">
+    <value>トランジション強度とピーク積分境界間でのスペクトルの注入時間との積の合計</value>
+  </data>
+  <data name="LcPeakAnalyteIonCountFragment">
+    <value>トランジション強度とピーク積分境界間でのMS2スペクトルの注入時間との積の合計</value>
+  </data>
+  <data name="LcPeakAnalyteIonCountMS1">
+    <value>総プリカーサー強度とピーク積分境界間でのMS1スペクトルの注入時間との積の合計</value>
+  </data>
+  <data name="LcPeakIonMetricsFragment">
+    <value>ピーク積分境界間のMS2スペクトルを取得する間に質量分析装置内に存在するイオン数に関係する値</value>
+  </data>
+  <data name="LcPeakIonMetricsMS1">
+    <value>ピーク積分境界間のMS1スペクトルを取得する間に質量分析装置内に存在するイオン数に関係する値</value>
+  </data>
+  <data name="LcPeakTotalIonCount">
+    <value>ピーク積分境界間のスペクトルの総イオン電流値と注入時間の積の総和</value>
+  </data>
+  <data name="LcPeakTotalIonCountFragment">
+    <value>ピーク積分境界間のMS2スペクトルの総イオン電流値と注入時間の積の総和</value>
+  </data>
+  <data name="LcPeakTotalIonCountMS1">
+    <value>ピーク積分境界間のMS1スペクトルの総イオン電流値と注入時間の積の総和</value>
+  </data>
+  <data name="LcPeakTotalIonCurrentArea">
+    <value>ピーク積分境界間の総イオン電流値の総和</value>
+  </data>
+  <data name="LcPeakTotalIonCurrentAreaFragment">
+    <value>ピーク積分境界間のMS2スペクトルの総イオン電流値の総和</value>
+  </data>
+  <data name="LcPeakTotalIonCurrentAreaMS1">
+    <value>ピーク積分境界間のMS1スペクトルの総イオン電流値の総和</value>
+  </data>
+  <data name="LcPeakTransitionIonCount">
+    <value>ピーク積分境界間のMS2スペクトルの強度と注入時間の積の合計</value>
   </data>
   <data name="LibraryCollisionCrossSection">
     <value>イオン移動度ライブラリからのプリカーサーの衝突断面積</value>
@@ -762,7 +873,7 @@
     <value>ディスク上で元の質量分析計のファイルが前回編集された日時</value>
   </data>
   <data name="Molecule">
-    <value>分子は分子リストに属し、プリカーサーが含まれます。</value>
+    <value>分子は分子リストに属し、プリカーサーを含みます。</value>
   </data>
   <data name="MoleculeFormula">
     <value>質量分析計で測定される荷電されていない非標識の分子の原子化学式。</value>
@@ -771,19 +882,27 @@
     <value>Skylineドキュメントにある分子のグループ化です。</value>
   </data>
   <data name="MoleculeListAbundance">
-    <value>[分子定量化] 設定で指定された「正規化メソッド」に従って算出された、分子リストの存在量を示す数値</value>
+    <value>分子リストの存在量を示す数字。
+通常はトランジションピーク面積の合計ですが、[分子定量化]設定で指定された正規化メソッドに応じて異なる場合があります。</value>
   </data>
   <data name="MoleculeListAbundanceMessage">
     <value>繰り返し測定間の「分子リスト存在量」の比較に欠損データが影響する場合に警告を表示</value>
   </data>
+  <data name="MoleculeListAbundanceRaw">
+    <value>分子リストの存在量を示す数字。
+通常はトランジションピーク面積の合計ですが、[分子定量化]設定で指定された正規化メソッドに応じて異なる場合があります。
+繰り返し測定間の比較に欠損データの影響がある場合でも利用可能です。</value>
+  </data>
   <data name="MoleculeListAbundanceStrict">
-    <value>[分子定量化] 設定で指定された「正規化メソッド」に従って算出された、分子リストの存在量を示す数値。繰り返し測定間の比較に欠損データの影響がある場合には利用できません。</value>
+    <value>分子リストの存在量を示す数字。
+通常はトランジションピーク面積の合計ですが、[分子定量化]設定で指定された正規化メソッドに応じて異なる場合があります。
+繰り返し測定間の比較に欠損データの影響がある場合には利用できません。</value>
   </data>
   <data name="MoleculeListAbundanceTransitionAveraged">
-    <value>分子リストの下にあるトランジションの平均正規化面積。この面積は [分子定量化] 設定で指定された正規化メソッドに従って正規化されます。</value>
+    <value>旧：代わりに分子リスト存在量の生データを使用します。</value>
   </data>
   <data name="MoleculeListAbundanceTransitionSummed">
-    <value>分子リストの下にあるトランジションの合計正規化面積。この面積は [分子定量化] 設定で指定された正規化メソッドに従って正規化されます</value>
+    <value>旧：分子リスト存在量の生データとトランジションの数の積に等しくなります。</value>
   </data>
   <data name="MoleculeListLocator">
     <value>ドキュメント内の分子リストの一意の識別子です。これは「MoleculeGroup:」で始まります。</value>
@@ -881,6 +1000,21 @@
   </data>
   <data name="OptStep">
     <value>最適化されているパラメーターのデフォルト値からの隔たりを示す最適化のステップの値です。デフォルトのパラメーター値または繰り返し測定で最適化が実施されていない 場合には0となります。</value>
+  </data>
+  <data name="OriginalEndTime">
+    <value>クロマトグラム抽出中にSkylineにより選択されたピークの保持終了時間</value>
+  </data>
+  <data name="OriginalPeak">
+    <value>クロマトグラム抽出中にSkylineにより選択されたピーク境界</value>
+  </data>
+  <data name="OriginalRetentionTime">
+    <value>クロマトグラム抽出中にSkylineにより選択されたピークの頂点の保持時間</value>
+  </data>
+  <data name="OriginalScore">
+    <value>クロマトグラム抽出中にSkylineにより割り当てられたピークスコア</value>
+  </data>
+  <data name="OriginalStartTime">
+    <value>クロマトグラム抽出中にSkylineにより選択されたピークの保持開始時間</value>
   </data>
   <data name="PeakGroupEndTime">
     <value>ピークグループに含まれる個別ピークの最大終了時間。</value>
@@ -1096,23 +1230,36 @@
   <data name="ProductNeutralMass">
     <value>ペプチドのプロダクトイオンのニュートラルな質量（Da）。</value>
   </data>
+  <data name="ProportionTruncated">
+    <value>データ取得時間範囲のいずれかの終端の
+境界でピーク積分するプリカーサーのトランジションの面積加重平均(0～1.0)。この場合、その終端の強度は
+もう一方の終端よりもバックグラウンドを差し引いたピーク高さが25%以上高いものを対象とします。</value>
+  </data>
   <data name="Protein">
     <value>タンパク質</value>
   </data>
   <data name="ProteinAbundance">
-    <value>[ペプチド定量化] 設定で指定された「正規化メソッド」に従って算出された、タンパク質の存在量を示す数値。</value>
+    <value>分子リストの存在量を示す数字。
+通常はトランジションピーク面積の合計ですが、[分子定量化]設定で指定された正規化メソッドに応じて異なる場合があります。</value>
   </data>
   <data name="ProteinAbundanceMessage">
     <value>繰り返し測定間の「タンパク質存在量」の比較に欠損データが影響がある場合に警告を表示</value>
   </data>
+  <data name="ProteinAbundanceRaw">
+    <value>分子リストの存在量を示す数字。
+通常はトランジションピーク面積の合計ですが、[分子定量化]設定で指定された正規化メソッドに応じて異なる場合があります。
+繰り返し測定間の比較に欠損データの影響がある場合でも利用可能です。</value>
+  </data>
   <data name="ProteinAbundanceStrict">
-    <value>[ペプチド定量化] 設定で指定された「正規化メソッド」に従って算出された、タンパク質の存在量を示す数値。繰り返し測定間の比較に欠損データの影響がある場合には利用できません。</value>
+    <value>分子リストの存在量を示す数字。
+通常はトランジションピーク面積の合計ですが、[分子定量化]設定で指定された正規化メソッドに応じて異なる場合があります。
+繰り返し測定間の比較に欠損データの影響がある場合には利用できません。</value>
   </data>
   <data name="ProteinAbundanceTransitionAveraged">
-    <value>[タンパク質] の下にあるトランジションの平均正規化面積。この面積は、[ペプチド定量化] 設定で指定された正規化メソッドに従って正規化されます。</value>
+    <value>旧：代わりにタンパク質存在量の生データを使用します。</value>
   </data>
   <data name="ProteinAbundanceTransitionSummed">
-    <value>[タンパク質] の下にあるトランジションの合計正規化面積。この面積は、[ペプチド定量化] 設定で指定された正規化メソッドに従って正規化されます。</value>
+    <value>旧：タンパク質存在量の生データとトランジションの数の積に等しくなります。</value>
   </data>
   <data name="ProteinAccession">
     <value>タンパク質アクセッション番号</value>
@@ -1212,6 +1359,21 @@
   </data>
   <data name="Reason">
     <value>ユーザーが変更を行う理由</value>
+  </data>
+  <data name="ReintegratedEndTime">
+    <value>トレーニングされたピークスコアリングモデルを用いた再積分時に選ばれたピークの保持終了時間</value>
+  </data>
+  <data name="ReintegratedPeak">
+    <value>トレーニングされたピークスコアリングモデルを用いた再積分時に選ばれたピークのピーク境界</value>
+  </data>
+  <data name="ReintegratedRetentionTime">
+    <value>トレーニングされたピークスコアリングモデルを用いた再積分時に選ばれたピークの頂点の保持時間</value>
+  </data>
+  <data name="ReintegratedScore">
+    <value>トレーニングされたピークスコアリングモデルを用いた再積分時に選ばれたピークに割り当てられたスコア</value>
+  </data>
+  <data name="ReintegratedStartTime">
+    <value>トレーニングされたピークスコアリングモデルを用いた再積分時に選ばれたピークの保持開始時間</value>
   </data>
   <data name="Replicate">
     <value>繰り返し測定</value>
@@ -1384,7 +1546,7 @@ Double Blank（ダブルブランク）</value>
     <value>プリカーサーのTotalAreaNormalized値の標準偏差。</value>
   </data>
   <data name="Strict">
-    <value>繰り返し測定間の比較に欠損データが影響する可能性がある場合には計算値が利用できません。</value>
+    <value>データがない場合に計算された値が利用できないと、繰り返し測定間の比較に影響を及ぼす可能性があります。</value>
   </data>
   <data name="SummaryMessage">
     <value>変更の説明</value>
@@ -1440,6 +1602,9 @@ Double Blank（ダブルブランク）</value>
   <data name="TransitionCount">
     <value>このプリカーサーのトランジションの数。</value>
   </data>
+  <data name="TransitionIonMetrics">
+    <value>質量分析装置内のイオン数に関係する値</value>
+  </data>
   <data name="TransitionIsDecoy">
     <value>デコイトランジションの場合は真です。</value>
   </data>
@@ -1476,7 +1641,7 @@ Double Blank（ダブルブランク）</value>
     <value>トランジション</value>
   </data>
   <data name="Truncated">
-    <value>ピークの積分において取得時間の範囲内のピークの両側で強度が全体のピーク高さの1%より高い場合には真です。</value>
+    <value>積分ピークの境界がデータ取得時間幅のいずれかの終端にあり、その終端がもう一方の終端よりもバックグラウンドを差し引いたピーク高さが25%以上高い場合は真となります。</value>
   </data>
   <data name="TurningPoint">
     <value>双線形回帰の場合、2つの線が交差するX座標です。</value>

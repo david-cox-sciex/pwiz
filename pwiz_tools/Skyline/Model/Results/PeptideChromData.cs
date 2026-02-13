@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Brendan MacLean <brendanx .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -94,6 +94,8 @@ namespace pwiz.Skyline.Model.Results
             get { return DataSets.Count > 0 ? DataSets[0].FirstKey : ChromKey.EMPTY; }
         }
 
+        public double? MaxTime { get; private set; }
+
         public int IndexInFile { get; set; }
 
         internal IEnumerable<IEnumerable<ChromDataSet>> ComparableDataSets
@@ -164,11 +166,10 @@ namespace pwiz.Skyline.Model.Results
                 var peakBounds = explicitPeakBounds.IsEmpty
                     ? null
                     : new PeakBounds(explicitPeakBounds.StartTime, explicitPeakBounds.EndTime);
-                explicitPeakBoundsFunc = (transitionGroup, transition)=>peakBounds;
+                explicitPeakBoundsFunc = (transitionGroup, transition) => peakBounds;
             }
             PickChromatogramPeaks(explicitPeakBoundsFunc);
         }
-
         public void PickChromatogramPeaks(ExplicitPeakBoundsFunc explicitPeakBoundsFunc)
         {
             TimeIntervals intersectedTimeIntervals = null;
@@ -219,7 +220,8 @@ namespace pwiz.Skyline.Model.Results
 
             // Merge where possible and pick peak groups at the peptide level
             _listListPeakSets.Clear();
-            foreach (var dataSets in ComparableDataSets)
+            var comparableDataSets = ComparableDataSets.ToList();
+            foreach (var dataSets in comparableDataSets)
                 _listListPeakSets.Add(PickPeptidePeaks(dataSets.ToArray()));
 
             // Adjust peak dimensions based on peak picking
@@ -247,8 +249,14 @@ namespace pwiz.Skyline.Model.Results
             UpdatePrecursorsFromPeptidePeaks();
 
             // Sort transition group level peaks by retention time and record the best peak
-            foreach (var chromDataSet in _dataSets)
-                chromDataSet.StorePeaks();
+            for (int iComparableDataSet = 0; iComparableDataSet < comparableDataSets.Count; iComparableDataSet++)
+            {
+                var bestScore = (float) (_listListPeakSets[iComparableDataSet].FirstOrDefault()?.CombinedScore ?? 0);
+                foreach (var dataSet in comparableDataSets[iComparableDataSet])
+                {
+                    dataSet.StorePeaks(bestScore);
+                }
+            }
         }
 
         private MaxPossibleShift GetMaxPossibleShift(IList<PeptideChromDataPeakList> listPeakSets)
@@ -877,17 +885,19 @@ namespace pwiz.Skyline.Model.Results
 
         private void AddDataSet(ChromDataSet chromDataSet)
         {
-            if (DataSets.Count != 0)
+            if (DataSets.Count == 0)
             {
-                var firstMaxTime = DataSets[0].FirstKey.OptionalMaxTime;
-                var nextMaxTime = chromDataSet.FirstKey.OptionalMaxTime;
-                if (firstMaxTime != nextMaxTime)
+                MaxTime = chromDataSet.FirstKey.OptionalMaxTime;
+            }
+            else if (MaxTime.HasValue)
+            {
+                if (chromDataSet.FirstKey.OptionalMaxTime.HasValue)
                 {
-                    string peptideName = NodePep == null ? string.Empty : NodePep.ModifiedSequenceDisplay;
-                    string message = string.Format(
-                        ResultsResources.PeptideChromDataSets_AddDataSet_Unable_to_process_chromatograms_for_the_molecule___0___because_one_chromatogram_ends_at_time___1___and_the_other_ends_at_time___2___,
-                        peptideName, firstMaxTime, nextMaxTime);
-                    throw new InvalidOperationException(message);
+                    MaxTime = Math.Max(MaxTime.Value, chromDataSet.FirstKey.OptionalMaxTime.Value);
+                }
+                else
+                {
+                    MaxTime = null;
                 }
             }
 

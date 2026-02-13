@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Matt Chambers <matt.chambers42 .@. gmail.com>
  *
  * Copyright 2024 University of Washington - Seattle, WA
@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-using pwiz.Skyline.Model.Results.RemoteApi.Ardia;
+using pwiz.CommonMsData.RemoteApi.Ardia;
 using System;
 using System.Collections.Generic;
 using System.Linq;

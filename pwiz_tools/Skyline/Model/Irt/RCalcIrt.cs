@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: John Chilton <jchilton .at. uw.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -68,12 +68,17 @@ namespace pwiz.Skyline.Model.Irt
 
         public override bool IsUsable => _database != null;
 
-        public override RetentionScoreCalculatorSpec Initialize(IProgressMonitor loadMonitor)
+        public override RetentionScoreCalculatorSpec Initialize(IProgressMonitor loadMonitor, ref IProgressStatus status)
+        {
+            return InitializeIrt(loadMonitor, ref status);
+        }
+
+        public RCalcIrt InitializeIrt(IProgressMonitor progressMonitor, ref IProgressStatus status)
         {
             if (_database != null)
                 return this;
 
-            var database = IrtDb.GetIrtDb(DatabasePath, loadMonitor);
+            var database = IrtDb.GetIrtDb(DatabasePath, progressMonitor, ref status);
             // Check for the case where an exception was handled by the progress monitor
             if (database == null)
                 return null;
@@ -138,6 +143,11 @@ namespace pwiz.Skyline.Model.Irt
         public override IEnumerable<Target> ChooseRegressionPeptides(IEnumerable<Target> peptides, out int minCount)
         {
             RequireUsable();
+            if (IsAlignmentOnly)
+            {
+                minCount = 0;
+                return Array.Empty<Target>();
+            }
 
             var pepArr = peptides.ToArray();
             var returnStandard = pepArr.Where(_database.IsStandard).Distinct().ToArray();
@@ -188,6 +198,11 @@ namespace pwiz.Skyline.Model.Irt
         {
             if (!IsUsable)
                 throw new InvalidOperationException(IrtResources.RCalcIrt_RequireUsable_Unexpected_use_of_iRT_calculator_before_successful_initialization_);
+        }
+
+        public override bool IsAlignmentOnly
+        {
+            get { return IsUsable && !GetStandardPeptides().Any(); }
         }
 
         public IEnumerable<Target> GetStandardPeptides()
@@ -447,7 +462,8 @@ namespace pwiz.Skyline.Model.Irt
 
             try
             {
-                calc = calc.Initialize(null) as RCalcIrt;
+                IProgressStatus status = new ProgressStatus();
+                calc = calc.InitializeIrt(null, ref status);
             }
             catch
             {
@@ -553,7 +569,7 @@ namespace pwiz.Skyline.Model.Irt
 
         public static string PersistAsSmallMolecules(string currentPersistencePath, string pathDestDir = null, IrtDb database = null)
         {
-            database ??= IrtDb.GetIrtDb(currentPersistencePath, null);
+            database ??= IrtDb.GetIrtDb(currentPersistencePath);
             pathDestDir ??= Path.GetDirectoryName(currentPersistencePath) ?? string.Empty;
 
             var persistPath = Path.Combine(pathDestDir, Path.GetFileName(currentPersistencePath) ?? string.Empty);  // ReSharper
@@ -702,8 +718,15 @@ namespace pwiz.Skyline.Model.Irt
             IReadOnlyList<DbIrtPeptide> standardPeptides, IReadOnlyList<DbIrtPeptide> heavyStandardPeptides)
         {
             RetentionTimeProvider = retentionTimes;
-
             Peptides = new List<Peptide>(standardPeptides.Count);
+
+            if (standardPeptides.Count == 0)
+            {
+                RegressionRefined = Regression = new RegressionLine(1, 0);
+                RegressionSuccess = true;
+                return;
+            }
+
             for (var i = 0; i < standardPeptides.Count; i++)
             {
                 var heavy = heavyStandardPeptides[i] != null;
@@ -913,7 +936,7 @@ namespace pwiz.Skyline.Model.Irt
             {
                 string.Format(
                     IrtResources.IncompleteStandardException_MissingTargetsMessage_The_calculator__0__requires_at_least__1__of_its__2__standard_peptides__The_following__3__peptides_are_missing_,
-                    calc.Name, standardCount, minStandardCount, missingTargets.Count),
+                    calc.Name, minStandardCount, standardCount, missingTargets.Count),
                 string.Empty
             };
             lines.AddRange(missingTargets.Select(target => target.ToString()));

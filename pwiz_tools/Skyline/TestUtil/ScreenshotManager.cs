@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Rita Chupalov <ritach .at. uw.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -30,7 +30,6 @@ using JetBrains.Annotations;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using pwiz.Common.SystemUtil;
 using pwiz.Skyline;
-using pwiz.Skyline.Util;
 using pwiz.Common.SystemUtil.PInvoke;
 using TestRunnerLib.PInvoke;
 using ZedGraph;
@@ -283,14 +282,12 @@ namespace pwiz.SkylineTestUtil
         {
             if (string.IsNullOrEmpty(_tutorialSourcePath))
                 return null;
-            return GetTutorialUrl("index.html") + "#s-" + screenshotNum;
+            return GetTutorialUrl("index.html") + "#s-" + PadScreenshotNum(screenshotNum);
         }
 
         public string ScreenshotImgUrl(int screenshotNum)
         {
-            return GetTutorialUrl("s-" + screenshotNum + ".png");
-            // Use this latter version once the website is updated
-            // return GetTutorialUrl("s-" + PadScreenshotNum(screenshotNum) + ".png");
+            return GetTutorialUrl("s-" + PadScreenshotNum(screenshotNum) + ".png");
         }
 
         private const string SCREENSHOT_URL_FOLDER = "24-1";
@@ -315,14 +312,14 @@ namespace pwiz.SkylineTestUtil
             return !string.IsNullOrEmpty(_tutorialDestPath) ? $"{Path.Combine(_tutorialDestPath, "s-" + PadScreenshotNum(screenshotNum))}.png" : null;
         }
 
-        private static string PadScreenshotNum(int screenshotNum)
+        public static string PadScreenshotNum(int screenshotNum)
         {
             return screenshotNum.ToString("D2");
         }
 
         public string ScreenshotDescription(int i, string description)
         {
-            return string.Format("s-{0}: {1}", i, description);
+            return string.Format("s-{0}: {1}", PadScreenshotNum(i), description);
         }
 
         public bool IsOverlappingScreenshot(Rectangle bounds)
@@ -402,6 +399,12 @@ namespace pwiz.SkylineTestUtil
         /// </summary>
         private void HideSensitiveFocusDisplay(Control screenshotControl)
         {
+            // Hide focus rectangles and mnemonic underscores by sending WM_CHANGEUISTATE
+            // to the top-level form. Windows tracks keyboard vs mouse mode and shows these
+            // UI cues when in keyboard mode. This can happen even when tests are started
+            // with a mouse click if any key is pressed on the machine.
+            HideKeyboardCues(screenshotControl);
+
             var focusControl = screenshotControl.GetFocus();
             if (focusControl is TextBox focusText)
             {
@@ -416,6 +419,30 @@ namespace pwiz.SkylineTestUtil
             else if (focusControl is TabControl focusTabControl)
             {
                 focusTabControl.SelectedTab.Focus();
+            }
+        }
+
+        /// <summary>
+        /// Hides keyboard-triggered UI cues (focus rectangles and mnemonic underscores)
+        /// by sending WM_CHANGEUISTATE to the form and all descendant controls.
+        /// Some controls (like TabControl/WizardPages) don't properly propagate
+        /// WM_CHANGEUISTATE to their children, so we send it recursively.
+        /// </summary>
+        private static void HideKeyboardCues(Control control)
+        {
+            var form = control.FindForm();
+            if (form != null)
+            {
+                HideKeyboardCuesRecursive(form);
+            }
+        }
+
+        private static void HideKeyboardCuesRecursive(Control control)
+        {
+            User32.SendMessage(control.Handle, User32.WinMessageType.WM_CHANGEUISTATE, User32.UISF_HIDEALL, IntPtr.Zero);
+            foreach (Control child in control.Controls)
+            {
+                HideKeyboardCuesRecursive(child);
             }
         }
 
@@ -461,13 +488,23 @@ namespace pwiz.SkylineTestUtil
                 SaveToFile(pathToSave, shotPic);
             }
 
+            // CopyBitmapToClipboard(shotPic);
+
+            return shotPic;
+        }
+
+        /// <summary>
+        /// Places a bitmap on the clipboard. Can safely be called from background threads.
+        /// Clipboard operations must be performed from STA apartment threads, but background threads
+        /// are typically MTA. Therefore, this function creates a new thread to do the copy.
+        /// </summary>
+        public static void CopyBitmapToClipboard(Bitmap bitmap)
+        {
             // Have to do it this way because of the limitation on OLE access from background threads.
-            var clipThread = new Thread(() => Clipboard.SetImage(shotPic));
+            var clipThread = new Thread(() => Clipboard.SetImage(bitmap));
             clipThread.SetApartmentState(ApartmentState.STA);
             clipThread.Start();
             clipThread.Join();
-
-            return shotPic;
         }
 
         private void SaveToFile(string filePath, Bitmap bmp)

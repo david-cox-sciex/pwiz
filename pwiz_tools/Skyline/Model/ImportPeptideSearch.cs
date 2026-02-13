@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Kaipo Tamura <kaipot .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -22,7 +22,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using pwiz.BiblioSpec;
+using pwiz.Common.Collections;
 using pwiz.Common.SystemUtil;
+using pwiz.CommonMsData;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.DocSettings.Extensions;
 using pwiz.Skyline.Model.Irt;
@@ -350,7 +352,19 @@ namespace pwiz.Skyline.Model
             {
                 // Search the directories of the search files
                 foreach (var searchFilename in SearchFilenames)
-                    yield return Path.GetDirectoryName(searchFilename);
+                {
+                    string searchFileDirectory = Path.GetDirectoryName(searchFilename);
+                    yield return searchFileDirectory;
+
+                    if (searchFileDirectory == null)
+                        continue;
+
+                    DirectoryInfo parentDir = Directory.GetParent(searchFileDirectory);
+                    if (parentDir != null)
+                    {
+                        yield return parentDir.ToString();
+                    }
+                }
             }
         }
 
@@ -434,15 +448,23 @@ namespace pwiz.Skyline.Model
         public IEnumerable<FoundResultsFile> GetFoundResultsFiles(bool excludeSpectrumSourceFiles = false)
         {
             return !excludeSpectrumSourceFiles
-                ? SpectrumSourceFiles.Values.Where(s => s.HasMatch).Select(s => new FoundResultsFile(s.Name, s.ExactMatch ?? s.AlternateMatch)).ToList()
-                : SpectrumSourceFiles.Values.Where(s => s.HasAlternateMatch).Select(s => new FoundResultsFile(s.Name, s.AlternateMatch)).ToList();
+                ? SpectrumSourceFiles.Values.Where(s => s.HasMatch)
+                    .Select(s => new FoundResultsFile(s.Name, s.ExactMatch ?? s.AlternateMatch))
+                    .OrderBy(fr => fr.Name, new NaturalFilenameComparer()).ToList()
+                : SpectrumSourceFiles.Values.Where(s => s.HasAlternateMatch)
+                    .Select(s => new FoundResultsFile(s.Name, s.AlternateMatch))
+                    .OrderBy(fr => fr.Name, new NaturalFilenameComparer()).ToList();
         }
 
         public IEnumerable<string> GetMissingResultsFiles(bool excludeSpectrumSourceFiles = false)
         {
             return !excludeSpectrumSourceFiles
-                ? SpectrumSourceFiles.Where(s => !s.Value.HasMatch).Select(s => s.Key)
-                : SpectrumSourceFiles.Where(s => !s.Value.HasAlternateMatch).Select(s => s.Key);
+                ? SpectrumSourceFiles.Where(s => !s.Value.HasMatch)
+                    .Select(s => s.Key)
+                    .OrderBy(s => s, new NaturalFilenameComparer())
+                : SpectrumSourceFiles.Where(s => !s.Value.HasAlternateMatch)
+                    .Select(s => s.Key)
+                    .OrderBy(s => s, new NaturalFilenameComparer());
         }
 
         public bool InitializeModifications(SrmDocument document)
@@ -479,7 +501,7 @@ namespace pwiz.Skyline.Model
         public void UpdateModificationMatches(SrmDocument document)
         {
             _matcher.ClearMatches();
-            _matcher.CreateMatches(document.Settings, DocLib.Keys, Settings.Default.StaticModList, Settings.Default.HeavyModList);
+            _matcher.CreateMatches(document.Settings, DocLib.Keys, Settings.Default.StaticModList, Settings.Default.HeavyModList, DocLib.Name);
         }
 
         public IEnumerable<StaticMod> GetMatchedMods()

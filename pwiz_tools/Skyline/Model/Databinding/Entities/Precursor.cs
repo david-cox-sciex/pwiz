@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Nicholas Shulman <nicksh .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -17,13 +17,9 @@
  * limitations under the License.
  */
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using pwiz.Common.Chemistry;
 using pwiz.Common.Collections;
 using pwiz.Common.DataBinding.Attributes;
-using pwiz.Skyline.Controls.SeqNode;
 using pwiz.Skyline.Model.Crosslinking;
 using pwiz.Skyline.Model.Databinding.Collections;
 using pwiz.Skyline.Model.DocSettings;
@@ -32,6 +28,9 @@ using pwiz.Skyline.Model.Hibernate;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.Util;
 using pwiz.Skyline.Util.Extensions;
+using System;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace pwiz.Skyline.Model.Databinding.Entities
 {
@@ -499,7 +498,7 @@ namespace pwiz.Skyline.Model.Databinding.Entities
         public override string ToString()
         {
             // Consider: maybe change TransitionGroupDocNode.ToString() to be this as well:
-            return TransitionGroupTreeNode.GetLabel(DocNode.TransitionGroup, DocNode.PrecursorMz, string.Empty);
+            return TransitionGroupDocNode.GetLabel(DocNode.TransitionGroup, DocNode.PrecursorMz, string.Empty);
         }
 
         [Obsolete]
@@ -550,6 +549,15 @@ namespace pwiz.Skyline.Model.Databinding.Entities
             }
         }
 
+        [ChildDisplayName("Exemplary{0}")]
+        public SourcedPeakValue ExemplaryPeak
+        {
+            get
+            {
+                return SourcedPeakValue.FromSourcedPeak(DataSchema.PeakBoundaryImputer.GetExemplaryPeak(Peptide.DocNode));
+            }
+        }
+
         [InvariantDisplayName("PrecursorLocator")]
         public string Locator { get { return GetLocator(); } }
 
@@ -582,6 +590,7 @@ namespace pwiz.Skyline.Model.Databinding.Entities
             }
         }
     }
+
 
     public class PrecursorResultSummary : SkylineObject
     {

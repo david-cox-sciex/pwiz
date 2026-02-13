@@ -1,4 +1,4 @@
-﻿
+
 /*
  * Original author: Nick Shulman <nicksh .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
@@ -119,6 +119,7 @@ namespace pwiz.Skyline.FileUI
                 {
                     _changingOptimizeSettings = true;
                     _minimizeResults.Settings = value;
+                    _minStatistics = null; // Reset so IsComplete waits for new worker
                     // ReSharper disable once PossibleNullReferenceException
                     cbxDiscardUnmatchedChromatograms.Checked = Settings.DiscardUnmatchedChromatograms;
                     if (Settings.NoiseTimeRange.HasValue)
@@ -390,17 +391,20 @@ namespace pwiz.Skyline.FileUI
 
         #region Functional Test Support
 
-        public bool LimitNoiseTime
+        public void SetNoiseLimit(bool limitNoiseTime, double? noiseTimeRange = null)
         {
-            get { return cbxLimitNoiseTime.Checked; }
-            set { cbxLimitNoiseTime.Checked = value; }
+            if (noiseTimeRange.HasValue)
+                tbxNoiseTimeRange.Text = noiseTimeRange.Value.ToString(CultureInfo.CurrentCulture);
+            cbxLimitNoiseTime.Checked = limitNoiseTime; // This triggers recalculation
         }
 
-        public double NoiseTimeRange
-        {
-            get { return double.Parse(tbxNoiseTimeRange.Text); }
-            set { tbxNoiseTimeRange.Text = value.ToString(CultureInfo.CurrentCulture); }
-        }
+        public int PercentOfTotalCompression => (int)Math.Round((_minStatistics?.MinimizedRatio ?? 0) * 100);
+
+        /// <summary>
+        /// Returns true when background statistics computation is complete.
+        /// Use this to wait before taking screenshots to ensure consistent compression ratios.
+        /// </summary>
+        public bool IsComplete => _minStatistics?.PercentComplete == 100;
 
         #endregion
 

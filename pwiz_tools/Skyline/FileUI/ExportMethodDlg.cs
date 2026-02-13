@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Brendan MacLean <brendanx .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -19,14 +19,20 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Drawing;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
+using Newtonsoft.Json.Linq;
 using NHibernate;
+using pwiz.Common;
+using pwiz.Common.GUI;
 using pwiz.Common.SystemUtil;
+using pwiz.CommonMsData.RemoteApi;
+using pwiz.CommonMsData.RemoteApi.WatersConnect;
 using pwiz.Skyline.Alerts;
 using pwiz.Skyline.Controls;
 using pwiz.Skyline.Controls.Graphs;
@@ -36,6 +42,7 @@ using pwiz.Skyline.Model.DocSettings.Extensions;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.Util;
 using pwiz.Skyline.Util.Extensions;
+using Transition = pwiz.Skyline.Model.Transition;
 
 namespace pwiz.Skyline.FileUI
 {
@@ -51,9 +58,13 @@ namespace pwiz.Skyline.FileUI
 
         public static string SCHED_NOT_SUPPORTED_ERR_TXT { get { return FileUIResources.ExportMethodDlg_comboTargetType_SelectedIndexChanged_Sched_Not_Supported_Err_Text; } }
 
+        // Shift to restore original radio button positions when wcDecideBuckets is hidden
+        private const int RADIO_BUTTON_SHIFT_WC_HIDDEN = 11;
+
         private readonly SrmDocument _document;
         private readonly ExportFileType _fileType;
         private string _instrumentType;
+
 
         private readonly ExportDlgProperties _exportProperties;
 
@@ -123,7 +134,8 @@ namespace pwiz.Skyline.FileUI
             // Select the last instrument if the CE predictor is the same as last time.
             if (!string.IsNullOrEmpty(lastCePredictorName) && Equals(lastCePredictorName, cePredictorName))
             {
-                InstrumentType = listTypes.FirstOrDefault(typeName => typeName.Equals(lastInstrument));
+                // Make sure the combo box can handle selecting this type without showing an error
+                SelectInstrumentTypeIfValid(lastInstrument, listTypes);
             }
 
             // Otherwise, set instrument type based on CE regression name for the document.
@@ -135,28 +147,26 @@ namespace pwiz.Skyline.FileUI
                 // have been changed to start with SCIEX
                 if (Equals(@"ABI", cePredictorPrefix) || Equals(@"AB", cePredictorPrefix))
                     cePredictorPrefix = ExportInstrumentType.ABI;
-                int i = -1;
-                if (document.Settings.TransitionSettings.FullScan.IsEnabled)
-                {
-                    i = listTypes.IndexOf(typeName => typeName.StartsWith(cePredictorPrefix) &&
-                        ExportInstrumentType.IsFullScanInstrumentType(typeName));
-                }
-                if (i == -1)
-                {
-                    i = listTypes.IndexOf(typeName => typeName.StartsWith(cePredictorPrefix));
-                }
-                if (i != -1)
-                    InstrumentType = listTypes[i];
+                // First try matching the entire name
+                string instrumentType = GetInstrumentTypeFromCEPrefix(document, listTypes, cePredictorName);
+                // Then the prefix if the full name is not found
+                instrumentType ??= GetInstrumentTypeFromCEPrefix(document, listTypes, cePredictorPrefix);
+                if (instrumentType != null)
+                    SelectInstrumentTypeIfValid(instrumentType, listTypes);
             }
             // If nothing found based on CE regression name, just use the first instrument in the list
             if (InstrumentType == null)
             {
                 var instrumentTypeFirst = listTypes[0];
                 // Avoid defaulting to Agilent for DIA when we know it is not supported.
-                if (IsDiaFullScan && Equals(instrumentTypeFirst, ExportInstrumentType.AGILENT_TOF) && listTypes.Length > 1)
-                    InstrumentType = listTypes[1];
-                else
-                    InstrumentType = instrumentTypeFirst;
+                if (IsDiaFullScan && Equals(instrumentTypeFirst, ExportInstrumentType.AGILENT_TOF) &&
+                    listTypes.Length > 1)
+                {
+                    instrumentTypeFirst = listTypes[1];
+                }
+                // Assume this is still not an instrument type that fails validation (i.e. Thermo with no software installed)
+                Assume.IsNotNull(GetInstrumentTypeFromSelection(GetSelectedInstrument(instrumentTypeFirst), true));
+                InstrumentType = instrumentTypeFirst;
             }
 
             // Reset method type based on what was used last and what the chosen instrument is capable of
@@ -256,6 +266,41 @@ namespace pwiz.Skyline.FileUI
             UpdateInstrumentControls(MethodType);
         }
 
+        private string GetInstrumentTypeFromCEPrefix(SrmDocument document, string[] listTypes, string cePredictorPrefix)
+        {
+            string instrumentType = null;
+            if (document.Settings.TransitionSettings.FullScan.IsEnabled)
+            {
+                instrumentType = listTypes.FirstOrDefault(typeName => 
+                    typeName.StartsWith(cePredictorPrefix) &&
+                    ExportInstrumentType.IsFullScanInstrumentType(GetInstrumentTypeFromSelection(typeName, true)));
+            }
+
+            instrumentType ??= listTypes.FirstOrDefault(typeName => typeName.StartsWith(cePredictorPrefix));
+
+            return instrumentType;
+        }
+
+        /// <summary>
+        /// Sets InstrumentType to a passed in value if it is valid based on
+        /// a list of types passed in and installed software on the local computer.
+        /// </summary>
+        /// <param name="instrumentType">An instrument type which may be long form, e.g. "Thermo Astral"</param>
+        /// <param name="listTypes">The list of type names used in the instrument type combo box</param>
+        private void SelectInstrumentTypeIfValid(string instrumentType, string[] listTypes)
+        {
+            // First get a valid type to select based on the starting type. This may convert
+            // a type like "Thermo Astral" stored in user.config to just "Thermo"
+            string selectionType = GetSelectedInstrument(instrumentType);
+            // If the resulting type is in the allowed list of types
+            if (listTypes.Contains(selectionType))
+            {
+                // Set the instrument type to a validated installed name which will set the combo box
+                // selection using GetSelectedInstrument as above.
+                InstrumentType ??= GetInstrumentTypeFromSelection(selectionType, true);
+            }
+        }
+
         protected override void OnHandleCreated(EventArgs e)
         {
             _recalcMethodCountStatus = RecalcMethodCountStatus.waiting;
@@ -273,7 +318,10 @@ namespace pwiz.Skyline.FileUI
 
         public string InstrumentType
         {
-            get { return _instrumentType; }
+            get
+            {
+                return _instrumentType;
+            }
             set
             {
                 _instrumentType = value;
@@ -288,8 +336,87 @@ namespace pwiz.Skyline.FileUI
                         MethodType = ExportMethodType.Standard;                        
 
                 }
-                comboInstrument.SelectedItem = _instrumentType;
+                comboInstrument.SelectedItem = GetSelectedInstrument(_instrumentType);
             }
+        }
+
+        public ExportFileType FileType
+        {
+            get { return _fileType; }
+        }
+
+        public string InstrumentTypeSelectedText => comboInstrument.SelectedItem.ToString();
+
+        /// <summary>
+        /// Versions prior to March 7, 2025 and the export list types, user.config may have
+        /// saved explicit Thermo instrument types like "Thermo Stellar". For method export
+        /// we want to select just "Thermo" for these types and have Skyline figure out the
+        /// appropriate instrument type based on the Windows registry and DLLs on the disk.
+        /// </summary>
+        /// <param name="instrumentType">A saved instrument type name</param>
+        /// <returns>Either the saved instrument type name unchanged or for a Thermo method
+        /// export to an instrument supporting TNG XML API, then just "Thermo"</returns>
+        private string GetSelectedInstrument(string instrumentType)
+        {
+            // If this is method export and a Thermo instrument type that supports TNG XML API,
+            // then the combo box selection should be just "Thermo"
+            return _fileType == ExportFileType.Method &&
+                   instrumentType != null && ExportInstrumentType.ThermoInstallationType(instrumentType) != null
+                ? ExportInstrumentType.THERMO
+                : instrumentType;
+        }
+
+        /// <summary>
+        /// <para>Returns the long form of instrument type based on the selection in the instrument
+        /// type combo box. This only applies to "Thermo" in method export, where the full
+        /// instrument type name like "Thermo Astral" or "Thermo Stellar" is derived from
+        /// the Windows registry and files on disk.</para>
+        /// <para>This function will show a <see cref="MessageDlg"/> before returning null,
+        /// if the selection is "Thermo" but a valid installation for an explicit type cannot
+        /// be found.</para>
+        /// </summary>
+        /// <returns>A valid selection type or null if the passed in selection type is not valid.</returns>
+        private string GetInstrumentTypeFromSelection()
+        {
+            return GetInstrumentTypeFromSelection(comboInstrument.SelectedItem.ToString(), false);
+        }
+
+        /// <summary>
+        /// <para>Returns the long form of instrument type based a selection type string.
+        /// This only applies to "Thermo" in method export, where the full
+        /// instrument type name like "Thermo Astral" or "Thermo Stellar" is derived from
+        /// the Windows registry and files on disk.</para>
+        /// </summary>
+        /// <param name="selectionType">The starting selection type, which may be simply "Thermo" or any other instrument type</param>
+        /// <param name="silentMode">If false, this function will show a <see cref="MessageDlg"/> before returning null,
+        /// if the selection type is "Thermo" but a valid installation for an explicit type cannot be found.</param>
+        /// <returns>A valid selection type or null if the passed in selection type is not valid.</returns>
+        private string GetInstrumentTypeFromSelection(string selectionType, bool silentMode)
+        {
+            if (_fileType != ExportFileType.Method || !Equals(selectionType, ExportInstrumentType.THERMO))
+                return selectionType;
+
+            var dllFinder = new ThermoDllFinder();
+            var thermoSoftwareInfo = dllFinder.GetSoftwareInfo();   // CONSIDER: This behaves differently for tests on a computer with Thermo software installed
+            if (thermoSoftwareInfo.InstrumentType == null)
+            {
+                if (!silentMode)
+                {
+                    MessageDlg.Show(this, TextUtil.LineSeparate(
+                        ModelResources.ThermoMassListExporter_EnsureLibraries_Failed_to_find_a_valid_Thermo_instrument_installation_,
+                        thermoSoftwareInfo.FailureReason));
+                }
+                return null;
+            }
+
+            string thermoType = ExportInstrumentType.ThermoTypeFromInstallationType(thermoSoftwareInfo.InstrumentType);
+            if (thermoType == null && !silentMode)
+            {
+                MessageDlg.Show(this, string.Format(ModelResources.ThermoMassListExporter_EnsureLibraries_Unknown_Thermo_instrument_type___0___installed_,
+                    thermoSoftwareInfo.InstrumentType));
+            }
+
+            return thermoType;
         }
 
         public bool IsSingleWindowInstrument
@@ -325,12 +452,16 @@ namespace pwiz.Skyline.FileUI
                    Equals(type, ExportInstrumentType.THERMO_FUSION_LUMOS) ||
                    Equals(type, ExportInstrumentType.THERMO_ECLIPSE) ||
                    Equals(type, ExportInstrumentType.THERMO_STELLAR) ||
+                   Equals(type, ExportInstrumentType.THERMO_ASTRAL) ||
+                   Equals(type, ExportInstrumentType.THERMO_ASTRAL_ZOOM) ||
+                   Equals(type, ExportInstrumentType.THERMO_ASCEND) ||
                    Equals(type, ExportInstrumentType.WATERS) ||
                    Equals(type, ExportInstrumentType.WATERS_SYNAPT_TRAP) ||
                    Equals(type, ExportInstrumentType.WATERS_SYNAPT_TRANSFER) ||
-                   Equals(type, ExportInstrumentType.WATERS_XEVO_TQ) ||
+                   Equals(type, ExportInstrumentType.WATERS_XEVO_TQ_MASS_LYNX) ||
                    Equals(type, ExportInstrumentType.WATERS_XEVO_QTOF) ||
                    Equals(type, ExportInstrumentType.WATERS_QUATTRO_PREMIER) ||
+                   Equals(type, ExportInstrumentType.WATERS_XEVO_TQ_WATERS_CONNECT) ||
                    // For AbSciex's TOF 5600 and QSTAR instruments, the dwell (accumulation) time
                    // given in the template method is used. So we will not display the 
                    // "Dwell Time" text box.
@@ -353,10 +484,13 @@ namespace pwiz.Skyline.FileUI
                        Equals(type, ExportInstrumentType.THERMO_ENDURA) ||
                        Equals(type, ExportInstrumentType.THERMO_EXPLORIS) ||
                        Equals(type, ExportInstrumentType.THERMO_FUSION_LUMOS) ||
+                       Equals(type, ExportInstrumentType.THERMO_ECLIPSE) ||
+                       Equals(type, ExportInstrumentType.THERMO_ASTRAL) ||
+                       Equals(type, ExportInstrumentType.THERMO_ASCEND) ||
                        Equals(type, ExportInstrumentType.WATERS) ||
                        Equals(type, ExportInstrumentType.WATERS_SYNAPT_TRAP) ||
                        Equals(type, ExportInstrumentType.WATERS_SYNAPT_TRANSFER) ||
-                       Equals(type, ExportInstrumentType.WATERS_XEVO_TQ) ||
+                       Equals(type, ExportInstrumentType.WATERS_XEVO_TQ_MASS_LYNX) ||
                        Equals(type, ExportInstrumentType.WATERS_XEVO_QTOF) ||
                        Equals(type, ExportInstrumentType.WATERS_QUATTRO_PREMIER) ||
                        Equals(type, ExportInstrumentType.BRUKER_TOF) ||
@@ -428,6 +562,9 @@ namespace pwiz.Skyline.FileUI
                         break;
                     case ExportStrategy.Buckets:
                         radioBuckets.Checked = true;
+                        break;
+                    case ExportStrategy.WcDecide:
+                        wcDecideBuckets.Checked = true;
                         break;
                 }
             }
@@ -823,7 +960,10 @@ namespace pwiz.Skyline.FileUI
         {
             var helper = new MessageBoxHelper(this, true);
 
-            _instrumentType = comboInstrument.SelectedItem.ToString();
+            var selectedInstrumentType = GetInstrumentTypeFromSelection();
+            if (selectedInstrumentType == null)
+                return;
+            _instrumentType = selectedInstrumentType;
 
             // Use variable for document to export, since code below may modify the document.
             SrmDocument documentExport = _document;
@@ -849,9 +989,12 @@ namespace pwiz.Skyline.FileUI
                     helper.ShowTextBoxError(textTemplateFile, FileUIResources.ExportMethodDlg_OkDialog_A_template_file_is_required_to_export_a_method);
                     return;
                 }
-                if (Equals(InstrumentType, ExportInstrumentType.AGILENT6400) || Equals(InstrumentType, ExportInstrumentType.AGILENT_MASSHUNTER_12_METHOD) ||
+
+                // Exclude WATERS_CONNECT_INSTRUMENT since template NOT on local file system. File existence is checked in the template selection dialog.
+                if ((!Equals(InstrumentType, ExportInstrumentType.WATERS_XEVO_TQ_WATERS_CONNECT)) && 
+                    (Equals(InstrumentType, ExportInstrumentType.AGILENT6400) || Equals(InstrumentType, ExportInstrumentType.AGILENT_MASSHUNTER_12_METHOD) ||
                     Equals(InstrumentType, ExportInstrumentType.BRUKER_TOF)
-                    ? !Directory.Exists(templateName) : !File.Exists(templateName))
+                    ? !Directory.Exists(templateName) : !File.Exists(templateName)))
                 {
                     helper.ShowTextBoxError(textTemplateFile, FileUIResources.ExportMethodDlg_OkDialog_The_template_file__0__does_not_exist, templateName);
                     return;
@@ -876,6 +1019,11 @@ namespace pwiz.Skyline.FileUI
                     helper.ShowTextBoxError(textTemplateFile,
                                             FileUIResources.ExportMethodDlg_OkDialog_The_folder__0__does_not_appear_to_contain_a_Bruker_TOF_method_template___The_folder_is_expected_to_have_a__m_extension__and_contain_the_file_submethods_xml_,
                                             templateName);
+                    return;
+                }
+                if (Equals(InstrumentType, ExportInstrumentType.WATERS_XEVO_TQ_WATERS_CONNECT) && !(textTemplateFile.Tag is WatersConnectAcquisitionMethodUrl methodUrl))
+                {
+                    helper.ShowTextBoxError(textTemplateFile, FileUIResources.ExportMethodDlg_OkDialog_Instrument_Type_is_Waters_Connect_but_Template_file_is_not);
                     return;
                 }
             }
@@ -1012,7 +1160,7 @@ namespace pwiz.Skyline.FileUI
                           .AppendLine(dpName ?? FileUIResources.ExportMethodDlg_OkDialog_None);
                     }
                     sb.AppendLine().Append(FileUIResources.ExportMethodDlg_OkDialog_Would_you_like_to_use_the_defaults_instead);
-                    var result = MultiButtonMsgDlg.Show(this, sb.ToString(), MultiButtonMsgDlg.BUTTON_YES, MultiButtonMsgDlg.BUTTON_NO, true);
+                    var result = MessageDlg.Show(this, sb.ToString(), false, MessageBoxButtons.YesNoCancel, MessageIcons.Warning);
                     if (result == DialogResult.Yes)
                     {
                         documentExport = ChangeInstrumentTypeSettings(documentExport, ceNameDefault, dpNameDefault);
@@ -1100,50 +1248,114 @@ namespace pwiz.Skyline.FileUI
                 }
             }
 
-            if (outputPath == null)
-            {
-                string title = Text;
-                string ext = TextUtil.EXT_CSV;
-                string filter = FileUIResources.ExportMethodDlg_OkDialog_Method_File;
-
-                switch (_fileType)
-                {
-                    case ExportFileType.List:
-                        filter = FileUIResources.ExportMethodDlg_OkDialog_Transition_List;
-                        ext = ExportInstrumentType.TransitionListExtension(_instrumentType);
-                        break;
-
-                    case ExportFileType.IsolationList:
-                        filter = FileUIResources.ExportMethodDlg_OkDialog_Isolation_List;
-                        ext = ExportInstrumentType.IsolationListExtension(_instrumentType);
-                        break;
-
-                    case ExportFileType.Method:
-                        title = string.Format(FileUIResources.ExportMethodDlg_OkDialog_Export__0__Method, _instrumentType);
-                        ext = ExportInstrumentType.MethodExtension(_instrumentType);
-                        break;
-                }
-
-                using (var dlg = new SaveFileDialog())
-                {
-                    dlg.Title = title;
-                    dlg.InitialDirectory = Settings.Default.ExportDirectory;
-                    dlg.OverwritePrompt = true;
-                    dlg.DefaultExt = ext;
-                    dlg.Filter = TextUtil.FileDialogFilterAll(filter, ext);
-                    if (dlg.ShowDialog(this) == DialogResult.Cancel)
-                    {
-                        return;
-                    }
-
-                    outputPath = dlg.FileName;
-                }
-            }
             _exportProperties.PolarityFilter = comboPolarityFilter.Enabled
                 ? (ExportPolarity)comboPolarityFilter.SelectedIndex
                 : ExportPolarity.all;
+            if (Owner is IDocumentContainer skylineWindow)
+                _exportProperties.SkylineDocumentFileName = Path.GetFileName((skylineWindow).DocumentFilePath);
 
-            Settings.Default.ExportDirectory = Path.GetDirectoryName(outputPath);
+            if (Equals(_instrumentType, ExportInstrumentType.WATERS_XEVO_TQ_WATERS_CONNECT))
+            {
+                // Select Output Folder and Name
+                using var saveDlg = new WatersConnectSaveMethodFileDialog(
+                    Settings.Default.RemoteAccountList.OfType<WatersConnectAccount>()
+                        .Select(a => a as RemoteAccount).ToList());
+                var templateUrl = textTemplateFile.Tag as WatersConnectAcquisitionMethodUrl;
+
+                if (templateUrl.FindMatchingAccount() is WatersConnectAccount wcacct &&
+                    wcacct.SupportsMethodDevelopment)
+                {
+                    // Point the browser to the same folder as the template
+                    saveDlg.InitialDirectory = templateUrl
+                        .ChangeType(WatersConnectUrl.ItemType.folder_with_methods);
+                }
+                else
+                {
+                    // if the template url points to an account not supporting method development
+                    // direct the dialog to the accounts list
+                    saveDlg.InitialDirectory = RemoteUrl.EMPTY;
+                }
+
+                if (_recalcMethodCountStatus != RecalcMethodCountStatus.running && _methodNameSuffixes.Any())
+                    saveDlg.MethodNameSuffixes = new List<string>(_methodNameSuffixes);
+
+                if (saveDlg.ShowDialog(this) == DialogResult.Cancel)
+                    return;
+
+                var targetFolder = saveDlg.CurrentDirectory as WatersConnectUrl;
+                targetFolder = targetFolder.ChangeInjectionId(saveDlg.MethodName);     // This is a hack to pass method name to the exporter
+                if (!targetFolder.SameAccountAs(templateUrl))
+                {
+                    MultiButtonMsgDlg.Show(this,
+                        FileUIResources.ExportMethodDlg_OkDialog_Selected_folder_is_on_a_different_Waters_Connect_account_than_the_template, MessageBoxButtons.OK);
+                    return;
+                }
+
+                if (targetFolder.FindMatchingAccount() is WatersConnectAccount wca)
+                {
+                    if (!wca.SupportsMethodDevelopment)
+                    {
+                        MessageDlg.Show(this, FileUIResources.ExportMethodDlg_OkDialog_Selected_waters_connect_account_does_not_support_method_development_, false, MessageIcons.Error);
+                        return;
+                    }
+                }
+                else
+                {
+                    // technically, this should never happen because user just selected a folder under this account.
+                    // Maybe it should be an assumption instead of the error message.
+                    MessageDlg.Show(this, FileUIResources.ExportMethodDlg_OkDialog_Cannot_find_waters_connect_account_for_the_selected_URL_, false, MessageIcons.Error);
+                    return;
+                }
+
+                outputPath = targetFolder.ToString();
+                templateName = templateUrl.ToString();
+            }
+            else
+            {
+                //  Export to Local File
+                if (outputPath == null)
+                {
+                    string title = Text;
+                    string ext = TextUtil.EXT_CSV;
+                    string filter = FileUIResources.ExportMethodDlg_OkDialog_Method_File;
+
+                    switch (_fileType)
+                    {
+                        case ExportFileType.List:
+                            filter = FileUIResources.ExportMethodDlg_OkDialog_Transition_List;
+                            ext = ExportInstrumentType.TransitionListExtension(_instrumentType);
+                            break;
+
+                        case ExportFileType.IsolationList:
+                            filter = FileUIResources.ExportMethodDlg_OkDialog_Isolation_List;
+                            ext = ExportInstrumentType.IsolationListExtension(_instrumentType);
+                            break;
+
+                        case ExportFileType.Method:
+                            title = string.Format(FileUIResources.ExportMethodDlg_OkDialog_Export__0__Method,
+                                _instrumentType);
+                            ext = ExportInstrumentType.MethodExtension(_instrumentType);
+                            break;
+                    }
+
+                    using (var dlg = new SaveFileDialog())
+                    {
+                        dlg.Title = title;
+                        dlg.InitialDirectory = Settings.Default.ExportDirectory;
+                        dlg.OverwritePrompt = true;
+                        dlg.DefaultExt = ext;
+                        dlg.Filter = TextUtil.FileDialogFilterAll(filter, ext);
+                        if (dlg.ShowDialog(this) == DialogResult.Cancel)
+                        {
+                            return;
+                        }
+
+                        outputPath = dlg.FileName;
+                    }
+                }
+
+                Settings.Default.ExportDirectory = Path.GetDirectoryName(outputPath);
+            }
 
             // Set ShowMessages property on ExportDlgProperties to true
             // so that we see the progress dialog during the export process
@@ -1151,9 +1363,13 @@ namespace pwiz.Skyline.FileUI
             _exportProperties.ShowMessages = true;
             try
             {
-                _exportProperties.ExportFile(_instrumentType, _fileType, outputPath, documentExport, templateName);
+                var exporter = _exportProperties.ExportFile(_instrumentType, _fileType, outputPath, documentExport, templateName);
+                if (exporter is WatersConnectMethodExporter wcExporter && wcExporter.UploadSuccessful)
+                {
+                    MessageDlg.Show(this, FileUIResources.ExportMethodDlg_OkDialog_WC_Upload_Successful + wcExporter.UploadResult, false, MessageBoxButtons.OK, MessageIcons.Success);
+                }
             }
-            catch(UnauthorizedAccessException x)
+            catch (UnauthorizedAccessException x)
             {
                 MessageDlg.ShowException(this, x);
                 _exportProperties.ShowMessages = wasShowMessageValue;
@@ -1251,8 +1467,10 @@ namespace pwiz.Skyline.FileUI
                 _exportProperties.ExportStrategy = ExportStrategy.Single;
             else if (radioProtein.Checked)
                 _exportProperties.ExportStrategy = ExportStrategy.Protein;
-            else
+            else if (radioBuckets.Checked)
                 _exportProperties.ExportStrategy = ExportStrategy.Buckets;
+            else if (wcDecideBuckets.Checked)
+                _exportProperties.ExportStrategy = ExportStrategy.WcDecide;
             // ReSharper restore ConvertIfStatementToConditionalTernaryExpression
 
             _exportProperties.SortByMz = cbSortByMz.Checked;
@@ -1619,6 +1837,11 @@ namespace pwiz.Skyline.FileUI
             StrategyCheckChanged();
         }
 
+        private void wcDecideBuckets_CheckedChanged(object sender, EventArgs e)
+        {
+            StrategyCheckChanged();
+        }
+
         private bool IsDia
         {
             get
@@ -1657,13 +1880,29 @@ namespace pwiz.Skyline.FileUI
             else if (!Equals(comboTargetType.SelectedItem, ExportMethodType.Standard.GetLocalizedString()))
                 cbIgnoreProteins.Checked = true;
 
-            if (radioSingle.Checked)
+            if (radioSingle.Checked || wcDecideBuckets.Checked)
             {
                 labelMethodNum.Text = 1.ToString(LocalizationHelper.CurrentCulture);
+                _methodNameSuffixes.Clear();
             }
             else
             {
                 CalcMethodCount();
+            }
+
+            if (wcDecideBuckets.Checked)
+            {
+                labelMaxTransitions.Visible = false;
+                textMaxTransitions.Visible = false;
+                labelMethodNum.Visible = false;
+                labelMethods.Visible = false;
+            }
+            else
+            {
+                labelMaxTransitions.Visible = true;
+                textMaxTransitions.Visible = true;
+                labelMethodNum.Visible = true;
+                labelMethods.Visible = true;
             }
         }
 
@@ -1671,7 +1910,14 @@ namespace pwiz.Skyline.FileUI
         {
             bool wasFullScanInstrument = IsFullScanInstrument;
 
-            _instrumentType = comboInstrument.SelectedItem.ToString();
+            var selectedInstrumentType = GetInstrumentTypeFromSelection();
+            if (selectedInstrumentType == null)
+            {
+                // No Thermo installation. Force the selection back to something valid
+                comboInstrument.SelectedIndex = 0;
+                return;
+            }
+            _instrumentType = selectedInstrumentType;
 
             // Temporary code until we support Agilent export of DIA isolation lists.
             if (Equals(_instrumentType, ExportInstrumentType.AGILENT_TOF) && IsDia)
@@ -1685,22 +1931,72 @@ namespace pwiz.Skyline.FileUI
             if (wasFullScanInstrument != IsFullScanInstrument)
                 UpdateMaxTransitions();
 
-            MethodTemplateFile templateFile;
-            textTemplateFile.Text = Settings.Default.ExportMethodTemplateList.TryGetValue(_instrumentType, out templateFile)
-                ? templateFile.FilePath
-                : string.Empty;
 
-            var targetType = ExportMethodTypeExtension.GetEnum(comboTargetType.SelectedItem.ToString());
-            if (targetType == ExportMethodType.Triggered && !CanTrigger && CanSchedule)
+            MethodTemplateFile templateFile;
+
+            // Check if currently in 4-button layout (all radio buttons evenly spaced)
+            bool inFourButtonLayout = wcDecideBuckets.Top - radioBuckets.Top == radioProtein.Top - radioSingle.Top;
+
+            if (Equals(_instrumentType, ExportInstrumentType.WATERS_XEVO_TQ_WATERS_CONNECT))
+            {
+                // User cannot edit remote URL.
+                EnableTextTemplateFileField(false);
+                if (Settings.Default.ExportMethodTemplateList.TryGetValue(_instrumentType, out var templateFileUrl))
+                {
+                    try
+                    {
+                        var templateUrl = new WatersConnectAcquisitionMethodUrl(templateFileUrl.FilePath);
+                        SetWatersConnectTemplateText(templateUrl);
+                    }
+                    catch
+                    {   // If settings contain invalid URL, clear the text box and set the tag to null. No need to show the error.
+                        textTemplateFile.Text = string.Empty;
+                        textTemplateFile.Tag = null;
+                        // Reset the tooltip to the original text
+                        var resources = new ComponentResourceManager(typeof(ExportMethodDlg));
+                        helpTip.SetToolTip(textTemplateFile, resources.GetString("textTemplateFile.ToolTip"));
+                    }
+                }
+                wcDecideBuckets.Visible = true;
+                // Shift radio buttons up if transitioning from 3-button to 4-button layout
+                if (!inFourButtonLayout)
+                {
+                    radioSingle.Top -= RADIO_BUTTON_SHIFT_WC_HIDDEN;
+                    radioProtein.Top -= RADIO_BUTTON_SHIFT_WC_HIDDEN;
+                    radioBuckets.Top -= RADIO_BUTTON_SHIFT_WC_HIDDEN;
+                }
+            }
+            else
+            {
+                textTemplateFile.Text =
+                    Settings.Default.ExportMethodTemplateList.TryGetValue(_instrumentType, out templateFile)
+                        ? templateFile.FilePath
+                        : string.Empty;
+                textTemplateFile.Tag = null;
+                EnableTextTemplateFileField(true);
+                var resources = new ComponentResourceManager(typeof(ExportMethodDlg));
+                helpTip.SetToolTip(textTemplateFile, resources.GetString("textTemplateFile.ToolTip"));
+                wcDecideBuckets.Visible = false;
+                // Shift radio buttons down if transitioning from 4-button to 3-button layout
+                if (inFourButtonLayout)
+                {
+                    radioSingle.Top += RADIO_BUTTON_SHIFT_WC_HIDDEN;
+                    radioProtein.Top += RADIO_BUTTON_SHIFT_WC_HIDDEN;
+                    radioBuckets.Top += RADIO_BUTTON_SHIFT_WC_HIDDEN;
+                }
+            }
+
+            var methodType = ExportMethodTypeExtension.GetEnum(comboTargetType.SelectedItem.ToString());
+            if (methodType == ExportMethodType.Triggered && !CanTrigger && CanSchedule)
             {
                 comboTargetType.SelectedItem = ExportMethodType.Scheduled.GetLocalizedString();
-                // Change in target type will update the instrument controls and calc method count
+                // Change in method type will update the instrument controls and calc method count
                 return;
             }
-            if (targetType != ExportMethodType.Standard && !CanSchedule)
+            if (methodType != ExportMethodType.Standard && !CanSchedule)
             {
                 comboTargetType.SelectedItem = ExportMethodType.Standard.GetLocalizedString();
-                // Change in target type will update the instrument controls and calc method count
+                // Change in method type will update the instrument controls and calc method count
                 return;
             }                
 
@@ -1708,11 +2004,29 @@ namespace pwiz.Skyline.FileUI
             // user selects "Scheduled" or "Triggered" and it is not supported by the instrument.
             // comboTargetType.Enabled = CanScheduleInstrumentType;
             
-            UpdateInstrumentControls(targetType);
+            UpdateInstrumentControls(methodType);
 
             CalcMethodCount();
 
             UpdateCovControls();
+        }
+
+        private void EnableTextTemplateFileField(bool enable)
+        {
+            if (enable)
+            {
+                textTemplateFile.BorderStyle = BorderStyle.Fixed3D;
+                textTemplateFile.BackColor = Color.White;
+                textTemplateFile.ForeColor = SystemColors.ControlText;
+                textTemplateFile.ReadOnly = false;
+            }
+            else
+            {
+                textTemplateFile.BorderStyle = BorderStyle.FixedSingle;
+                textTemplateFile.BackColor = SystemColors.ButtonFace;
+                textTemplateFile.ForeColor = SystemColors.GrayText;
+                textTemplateFile.ReadOnly = true;
+            }
         }
 
         private void comboPolarityFilter_SelectedIndexChanged(object sender, EventArgs e)
@@ -1761,10 +2075,16 @@ namespace pwiz.Skyline.FileUI
             {
                 comboOptimizing.Enabled = true;
             }
+            else if (IsDia)
+            {
+                comboOptimizing.Enabled = false;    // No optimization for DIA
+            }
             else
             {
                 comboOptimizing.Enabled = Equals(InstrumentType, ExportInstrumentType.ABI_TOF) ||
-                                          Equals(InstrumentType, ExportInstrumentType.ABI_7600);
+                                          Equals(InstrumentType, ExportInstrumentType.ABI_7600) ||
+                                          Equals(InstrumentType, ExportInstrumentType.THERMO_Q_EXACTIVE) || // Q Exactive
+                                          ExportInstrumentType.ThermoInstallationType(InstrumentType) != null;  // Any modern Thermo instrument supporting XML method export
             }
 
             if (!comboOptimizing.Enabled)
@@ -1884,6 +2204,7 @@ namespace pwiz.Skyline.FileUI
 
         private enum RecalcMethodCountStatus { waiting, running, pending }
         private RecalcMethodCountStatus _recalcMethodCountStatus = RecalcMethodCountStatus.waiting;
+        private List<string> _methodNameSuffixes = new List<string>();
 
         private void CalcMethodCount()
         {
@@ -1947,13 +2268,17 @@ namespace pwiz.Skyline.FileUI
             }
 
             int? methodCount = null;
+            IEnumerable<string> methodSuffixes = null;
             if (exporter != null && exporter.MemoryOutput != null)
+            {
                 methodCount = exporter.MemoryOutput.Count;
+                methodSuffixes = exporter.MemoryOutput.Keys.Select(s => s.Replace(AbstractMassListExporter.MEMORY_KEY_ROOT, ""));
+            }
             // Switch back to the UI thread to update the form
             try
             {
                 if (!_cancellationTokenSource.IsCancellationRequested)
-                    Invoke(new Action<int?>(UpdateMethodCount), methodCount);
+                    Invoke(new Action<int?, IEnumerable<string>>(UpdateMethodCount), methodCount, methodSuffixes);
             }
 // ReSharper disable EmptyGeneralCatchClause
             catch (Exception)
@@ -1963,12 +2288,13 @@ namespace pwiz.Skyline.FileUI
             }
         }
 
-        private void UpdateMethodCount(int? methodCount)
+        private void UpdateMethodCount(int? methodCount, IEnumerable<string> methodSuffixes)
         {
             labelMethodNum.Text = methodCount.HasValue
                 ? methodCount.Value.ToString(LocalizationHelper.CurrentCulture)
                 : string.Empty;
-
+            _methodNameSuffixes.Clear();
+            _methodNameSuffixes.AddRange(methodSuffixes);
             var recalcMethodCountStatus = _recalcMethodCountStatus;
             _recalcMethodCountStatus = RecalcMethodCountStatus.waiting;
             if (recalcMethodCountStatus == RecalcMethodCountStatus.pending)
@@ -2054,8 +2380,63 @@ namespace pwiz.Skyline.FileUI
             textRunLength.Visible = showRunLength;
         }
 
+        private void SetWatersConnectTemplateText(WatersConnectAcquisitionMethodUrl url)
+        {
+            textTemplateFile.Tag = url;
+            if (url.SupportsMethodDevelopment)
+            {
+                textTemplateFile.ForeColor = SystemColors.ControlText;
+                helpTip.SetToolTip(textTemplateFile, url.FormattedString());  // Show full URL string in the tooltip
+            }
+            else
+            {
+                textTemplateFile.ForeColor = Color.Maroon;
+                helpTip.SetToolTip(textTemplateFile, FileUIResources.ExportMethodDlg_btnBrowseTemplate_Click_Account_for_this_template_does_not_support_method_development_);
+            }
+            textTemplateFile.Text = url.GetFilePath() + RemoteUrl.PATH_SEPARATOR + url.MethodName;
+        }
+
         private void btnBrowseTemplate_Click(object sender, EventArgs e)
         {
+            if (Equals(InstrumentType, ExportInstrumentType.WATERS_XEVO_TQ_WATERS_CONNECT))
+            {
+                using (var dlgOpen = new WatersConnectSelectMethodFileDialog(
+                           Settings.Default.RemoteAccountList.OfType<WatersConnectAccount>().Select(a => a as RemoteAccount).ToList()))
+                {
+                    if (textTemplateFile.Tag is WatersConnectAcquisitionMethodUrl templateUrl)
+                    {
+                        if (templateUrl.SupportsMethodDevelopment)
+                        {
+                            // Point the browser to the same folder as the selected template if there is one
+                            var folderId = templateUrl.FolderOrSampleSetId;
+                            dlgOpen.InitialDirectory = templateUrl
+                                .ChangeType(WatersConnectUrl.ItemType.folder_with_methods);
+                        }
+                        else
+                        {
+                            MessageDlg.Show(this,
+                                FileUIResources.ExportMethodDlg_btnBrowseTemplate_Click_Selected_account_does_not_support_method_development__Please__create_or_select_another_account_,
+                                false, MessageIcons.Warning);
+                            dlgOpen.InitialDirectory = RemoteUrl.EMPTY;
+                        }
+                    }
+                    if (dlgOpen.ShowDialog(this) != DialogResult.OK)
+                       return;
+
+                    
+                    var watersConnectUrl = (WatersConnectAcquisitionMethodUrl)dlgOpen.MethodUrl
+                        // Keep folder Id for the save method dialogue to work properly.
+                        .ChangeFolderOrSampleSetId((dlgOpen.CurrentDirectory as WatersConnectAcquisitionMethodUrl)?.FolderOrSampleSetId); 
+                    SetWatersConnectTemplateText(watersConnectUrl);
+                }
+                return;
+            }
+            //  Clear since not Waters Connect
+            textTemplateFile.Tag = null;
+            // Reset the tooltip to the original text
+            var resources = new ComponentResourceManager(typeof(ExportMethodDlg));
+            helpTip.SetToolTip(textTemplateFile, resources.GetString("textTemplateFile.ToolTip"));
+
             string templateName = textTemplateFile.Text;
             if (Equals(InstrumentType, ExportInstrumentType.AGILENT6400) || Equals(InstrumentType, ExportInstrumentType.AGILENT_MASSHUNTER_12_METHOD) ||
                 Equals(InstrumentType, ExportInstrumentType.BRUKER_TOF))
@@ -2138,8 +2519,9 @@ namespace pwiz.Skyline.FileUI
                 {
                     listFileTypes.Add(MethodFilter(ExportInstrumentType.EXT_THERMO));
                 }
-                else if (Equals(InstrumentType, ExportInstrumentType.WATERS_XEVO_TQ) ||
-                         Equals(InstrumentType, ExportInstrumentType.WATERS_QUATTRO_PREMIER))
+                else if (Equals(InstrumentType, ExportInstrumentType.WATERS_XEVO_TQ_MASS_LYNX) ||
+                         Equals(InstrumentType, ExportInstrumentType.WATERS_QUATTRO_PREMIER) ||
+                         Equals(InstrumentType, ExportInstrumentType.WATERS_XEVO_TQ_WATERS_CONNECT))
                 {
                     listFileTypes.Add(MethodFilter(ExportInstrumentType.EXT_WATERS));
                 }
@@ -2297,10 +2679,7 @@ namespace pwiz.Skyline.FileUI
 
         public void SetInstrument(string instrument)
         {
-            if(ExportInstrumentType.TRANSITION_LIST_TYPES.ToList().Find(inst => Equals(inst, instrument)) == default(string))
-                return;
-
-            comboInstrument.SelectedText = instrument;
+            comboInstrument.SelectedItem = instrument;
         }
 
         public void SetMethodType(ExportMethodType type)
@@ -2350,6 +2729,11 @@ namespace pwiz.Skyline.FileUI
             get { return textPrimaryCount.Visible; }
         }
 
+        public TextBox TemplatePathField
+        {
+            get => textTemplateFile;
+        }
+
         public int CalculationTime
         {
             get { return _exportProperties.MultiplexIsolationListCalculationTime; }
@@ -2368,6 +2752,11 @@ namespace pwiz.Skyline.FileUI
             set { cbUseStartAndEndRts.Checked = value; }
         }
 
+        public void ClickTemplateButton()
+        {
+            btnBrowseTemplate_Click(this, EventArgs.Empty);
+        }
+
         #endregion
     }
 
@@ -2383,6 +2772,10 @@ namespace pwiz.Skyline.FileUI
         }
 
         public bool ShowMessages { get; set; }
+
+        private static readonly string JSON_TOKEN_DETAILS = @"details";
+        private static readonly string JSON_TOKEN_ERRORS = @"errors";
+
 
         public override void PerformLongExport(Action<IProgressMonitor> performExport)
         {
@@ -2403,8 +2796,38 @@ namespace pwiz.Skyline.FileUI
                 }
                 catch (Exception x)
                 {
-                    MessageDlg.ShowWithException(_dialog, TextUtil.LineSeparate(FileUIResources.ExportDlgProperties_PerformLongExport_An_error_occurred_attempting_to_export,
-                                                                   x.Message), x);
+                    if (x.InnerException is RemoteServerException exception)
+                    {
+                        if (ExportInstrumentType.WATERS_XEVO_TQ_WATERS_CONNECT.Equals(_dialog.InstrumentType))
+                        {
+                            var sbMessage = new StringBuilder(x.Message);
+                            var detailMessage = new StringBuilder(CommonApplicationSettings.ProgramNameAndVersion + Environment.NewLine);
+
+                            if (exception.ServerData != null)
+                            {
+                                var errors = JObject.Parse(exception.ServerData)[JSON_TOKEN_ERRORS] as JArray;
+                                if (errors != null && errors.Any(err => err[JSON_TOKEN_DETAILS] != null))
+                                {
+                                    var errorsWithMessage =
+                                        errors.ToList().FindAll(err => err[JSON_TOKEN_DETAILS] != null);
+                                    sbMessage.Append(string.Format(FileUIResources.ExportDlgProperties_PerformLongExport_The_server_returns_the_following_message, (errorsWithMessage.First()[JSON_TOKEN_DETAILS] ?? "").Value<string>()));
+                                    if (errorsWithMessage.Count > 1)
+                                    {
+                                        sbMessage.Append(string.Format(FileUIResources.ExportDlgProperties_PerformLongExport_and_0_other_Click_More_Info, errorsWithMessage.Count - 1,
+                                            errorsWithMessage.Count > 2 ? FileUIResources.ExportDlgProperties_PerformLongExport_messages : FileUIResources.ExportDlgProperties_PerformLongExport_message));
+                                        foreach (var error in errorsWithMessage)
+                                            detailMessage.Append(Environment.NewLine + error[JSON_TOKEN_DETAILS]?.Value<string>());
+                                    }
+                                }
+                            }
+                            detailMessage.Append(Environment.NewLine + exception);
+                            MessageDlg.ShowWithDetails(_dialog, sbMessage.ToString(), detailMessage.ToString(), messageIcon: MessageIcons.Error);
+                        }
+                    }
+                    else
+                        MessageDlg.ShowWithException(_dialog,
+                            TextUtil.LineSeparate(FileUIResources.ExportDlgProperties_PerformLongExport_An_error_occurred_attempting_to_export,
+                                x.Message), x);
                 }
             }
         }

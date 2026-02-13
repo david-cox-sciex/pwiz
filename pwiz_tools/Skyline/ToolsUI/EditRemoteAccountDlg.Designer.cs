@@ -1,4 +1,4 @@
-﻿namespace pwiz.Skyline.ToolsUI
+namespace pwiz.Skyline.ToolsUI
 {
     partial class EditRemoteAccountDlg
     {
@@ -42,6 +42,8 @@
             this.comboAccountType = new System.Windows.Forms.ComboBox();
             this.label1 = new System.Windows.Forms.Label();
             this.groupBoxUnifi = new System.Windows.Forms.GroupBox();
+            this.tbxClientId = new System.Windows.Forms.TextBox();
+            this.lblClientId = new System.Windows.Forms.Label();
             this.tbxClientSecret = new System.Windows.Forms.TextBox();
             this.lblClientSecret = new System.Windows.Forms.Label();
             this.tbxClientScope = new System.Windows.Forms.TextBox();
@@ -58,6 +60,8 @@
             this.label3 = new System.Windows.Forms.Label();
             this.textArdiaServerURL = new System.Windows.Forms.TextBox();
             this.toolTip1 = new System.Windows.Forms.ToolTip(this.components);
+            this.lblAlias = new System.Windows.Forms.Label();
+            this.textAlias = new System.Windows.Forms.TextBox();
             this.groupBoxUnifi.SuspendLayout();
             this.wizardPagesByAccountType.SuspendLayout();
             this.tabUnifiSettings.SuspendLayout();
@@ -87,12 +91,14 @@
             // 
             resources.ApplyResources(this.textServerURL, "textServerURL");
             this.textServerURL.Name = "textServerURL";
+            this.textServerURL.TextChanged += new System.EventHandler(this.text_TextChanged);
             // 
             // textPassword
             // 
             resources.ApplyResources(this.textPassword, "textPassword");
             this.textPassword.Name = "textPassword";
             this.textPassword.UseSystemPasswordChar = true;
+            this.textPassword.TextChanged += new System.EventHandler(this.text_TextChanged);
             // 
             // lblPassword
             // 
@@ -108,6 +114,21 @@
             // 
             resources.ApplyResources(this.textUsername, "textUsername");
             this.textUsername.Name = "textUsername";
+            this.textUsername.TextChanged += new System.EventHandler(this.text_TextChanged);
+
+            // 
+            // textAlias
+            // 
+            resources.ApplyResources(this.textAlias, "textAlias");
+            this.textAlias.Name = "textAlias";
+            this.toolTip1.SetToolTip(this.textAlias, resources.GetString("btnLogoutArdia.ToolTip"));
+
+            // 
+            // lblAlias
+            // 
+            resources.ApplyResources(this.lblAlias, "lblAlias");
+            this.lblAlias.Name = "lblAlias";
+
             // 
             // btnTest
             // 
@@ -132,6 +153,8 @@
             // groupBoxUnifi
             // 
             resources.ApplyResources(this.groupBoxUnifi, "groupBoxUnifi");
+            this.groupBoxUnifi.Controls.Add(this.tbxClientId);
+            this.groupBoxUnifi.Controls.Add(this.lblClientId);
             this.groupBoxUnifi.Controls.Add(this.tbxClientSecret);
             this.groupBoxUnifi.Controls.Add(this.lblClientSecret);
             this.groupBoxUnifi.Controls.Add(this.tbxClientScope);
@@ -141,10 +164,23 @@
             this.groupBoxUnifi.Name = "groupBoxUnifi";
             this.groupBoxUnifi.TabStop = false;
             // 
+            // tbxClientId
+            // 
+            resources.ApplyResources(this.tbxClientId, "tbxClientId");
+            this.tbxClientId.Name = "tbxClientId";
+            this.tbxClientId.TextChanged += new System.EventHandler(this.text_TextChanged);
+            // 
+            // lblClientId
+            // 
+            resources.ApplyResources(this.lblClientId, "lblClientId");
+            this.lblClientId.Name = "lblClientId";
+            // 
             // tbxClientSecret
             // 
             resources.ApplyResources(this.tbxClientSecret, "tbxClientSecret");
             this.tbxClientSecret.Name = "tbxClientSecret";
+            this.tbxClientSecret.UseSystemPasswordChar = true;
+            this.tbxClientSecret.TextChanged += new System.EventHandler(this.text_TextChanged);
             // 
             // lblClientSecret
             // 
@@ -155,6 +191,7 @@
             // 
             resources.ApplyResources(this.tbxClientScope, "tbxClientScope");
             this.tbxClientScope.Name = "tbxClientScope";
+            this.tbxClientScope.TextChanged += new System.EventHandler(this.text_TextChanged);
             // 
             // lblClientScope
             // 
@@ -165,6 +202,7 @@
             // 
             resources.ApplyResources(this.tbxIdentityServer, "tbxIdentityServer");
             this.tbxIdentityServer.Name = "tbxIdentityServer";
+            this.tbxIdentityServer.TextChanged += new System.EventHandler(this.text_TextChanged);
             // 
             // lblIdentityServer
             // 
@@ -179,6 +217,7 @@
             this.wizardPagesByAccountType.Multiline = true;
             this.wizardPagesByAccountType.Name = "wizardPagesByAccountType";
             this.wizardPagesByAccountType.SelectedIndex = 0;
+            this.wizardPagesByAccountType.TabStop = false;
             // 
             // tabUnifiSettings
             // 
@@ -223,6 +262,7 @@
             // 
             resources.ApplyResources(this.textArdiaAlias_Username, "textArdiaAlias_Username");
             this.textArdiaAlias_Username.Name = "textArdiaAlias_Username";
+            this.textArdiaAlias_Username.TextChanged += new System.EventHandler(this.text_TextChanged);
             // 
             // label2
             // 
@@ -238,6 +278,7 @@
             // 
             resources.ApplyResources(this.textArdiaServerURL, "textArdiaServerURL");
             this.textArdiaServerURL.Name = "textArdiaServerURL";
+            this.textArdiaServerURL.TextChanged += new System.EventHandler(this.text_TextChanged);
             // 
             // EditRemoteAccountDlg
             // 
@@ -251,6 +292,8 @@
             this.Controls.Add(this.btnOK);
             this.Controls.Add(this.label1);
             this.Controls.Add(this.comboAccountType);
+            this.Controls.Add(this.textAlias);
+            this.Controls.Add(this.lblAlias);
             this.MaximizeBox = false;
             this.MinimizeBox = false;
             this.Name = "EditRemoteAccountDlg";
@@ -281,6 +324,10 @@
         private System.Windows.Forms.Button btnTest;
         private System.Windows.Forms.ComboBox comboAccountType;
         private System.Windows.Forms.Label label1;
+
+        internal System.Windows.Forms.TextBox textAlias;
+        private System.Windows.Forms.Label lblAlias;
+
         private System.Windows.Forms.GroupBox groupBoxUnifi;
         private System.Windows.Forms.Label lblIdentityServer;
         private System.Windows.Forms.TextBox tbxClientSecret;
@@ -298,5 +345,7 @@
         private System.Windows.Forms.Button btnLogoutArdia;
         private System.Windows.Forms.CheckBox cbArdiaDeleteRawAfterImport;
         private System.Windows.Forms.ToolTip toolTip1;
+        private System.Windows.Forms.TextBox tbxClientId;
+        private System.Windows.Forms.Label lblClientId;
     }
 }

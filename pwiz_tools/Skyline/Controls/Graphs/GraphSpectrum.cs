@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Brendan MacLean <brendanx .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -18,19 +18,22 @@
  */
 
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
+using System.Globalization;
 using System.Linq;
+using System.Text;
 using System.Windows.Forms;
 using pwiz.Common.Chemistry;
 using pwiz.Common.Collections;
 using pwiz.Common.SystemUtil;
+using pwiz.CommonMsData;
 using pwiz.MSGraph;
 using pwiz.Skyline.Controls.SeqNode;
 using pwiz.Skyline.Model;
 using pwiz.Skyline.Model.DocSettings;
+using pwiz.Skyline.Model.Hibernate;
 using pwiz.Skyline.Model.Lib;
 using pwiz.Skyline.Model.Koina;
 using pwiz.Skyline.Model.Koina.Models;
@@ -78,7 +81,7 @@ namespace pwiz.Skyline.Controls.Graphs
         MzRange GetMzRange(SpectrumControlType controlType);
     }
     
-    public partial class GraphSpectrum : DockableFormEx, IGraphContainer, IMzScalePlot, IMenuControlImplementer
+    public partial class GraphSpectrum : DockableFormEx, IGraphContainer, IMzScalePlot, IMenuControlImplementer, ITipDisplayer
     {
 
         private static readonly double YMAX_SCALE = 1.25;
@@ -131,6 +134,72 @@ namespace pwiz.Skyline.Controls.Graphs
             }
         }
 
+        public class ToolTipImplementation : ITipProvider
+        {
+            LibraryRankedSpectrumInfo.RankedMI _peakRMI;
+            private TableDesc _table;       // Used for test support
+
+            // This property for testing purposes only, not visible to the user
+            [Localizable(false)]
+            public string ToolTipText
+            {
+                get
+                {
+                    if (_table == null)
+                        return string.Empty;
+                    StringBuilder sbText = new StringBuilder();
+                    for (var rowIndex = 0; rowIndex < _table.Count; rowIndex++)
+                    {
+                        for (var colIndex = 0; colIndex < _table[rowIndex].Count; colIndex++)
+                        {
+                            sbText.Append(_table[rowIndex][colIndex].Text);
+                            if (colIndex < _table[rowIndex].Count - 1)
+                                sbText.Append("\t");
+                        }
+                        if (rowIndex < _table.Count - 1)
+                            sbText.Append("\n");
+                    }
+                    return sbText.ToString();
+                }
+            }
+
+            public ToolTipImplementation(LibraryRankedSpectrumInfo.RankedMI peakRMI)
+            {
+                _peakRMI = peakRMI;
+            }
+            public bool HasTip => _peakRMI != null;
+
+            public Size RenderTip(Graphics g, Size sizeMax, bool draw)
+            {
+                if (!HasTip)
+                    return Size.Empty;
+                var table = new TableDesc();
+                using(var rt = new RenderTools())
+                {
+                    table.AddDetailRow(GraphsResources.GraphSpectrum_ToolTip_mz,
+                          _peakRMI.ObservedMz.ToString(Formats.Mz, CultureInfo.CurrentCulture), rt);
+                    table.AddDetailRow(GraphsResources.GraphSpectrum_ToolTip_Intensity,
+                        _peakRMI.Intensity.ToString(@"##", CultureInfo.CurrentCulture), rt);
+                    if (_peakRMI.Rank > 0)
+                        table.AddDetailRow(GraphsResources.GraphSpectrum_ToolTip_Rank, 
+                            string.Format(@"{0}",  _peakRMI.Rank), rt);
+                    if (_peakRMI.MatchedIons != null && _peakRMI.MatchedIons.Count > 0)
+                    {
+                        table.AddDetailRow(GraphsResources.GraphSpectrum_ToolTip_MatchedIons, GraphsResources.ToolTipImplementation_RenderTip_Calculated_Mass, rt, true);
+                        foreach (var mfi in _peakRMI.MatchedIons)
+                            table.AddDetailRow(AbstractSpectrumGraphItem.GetLabel(mfi, _peakRMI.Rank, false, false),
+                                mfi.PredictedMz.ToString(Formats.Mz, CultureInfo.CurrentCulture) + @"  " +
+                                AbstractSpectrumGraphItem.GetMassErrorString(_peakRMI, mfi), rt);
+                    }
+                    _table = table;
+                    var size = table.CalcDimensions(g);
+                    if (draw)
+                        table.Draw(g);
+                    return new Size((int)size.Width + 2, (int)size.Height + 2);
+                }
+            }
+        }
+
         private readonly IDocumentUIContainer _documentContainer;
         private readonly IStateProvider _stateProvider;
         private readonly UpdateManager _updateManager;
@@ -139,9 +208,12 @@ namespace pwiz.Skyline.Controls.Graphs
         private ImmutableList<Precursor> Precursors => _updateManager.Precursors;
         private int PrecursorCount => Precursors?.Count ?? 0;
 
-        private SpectrumDisplayInfo _mirrorSpectrum;
         private SpectrumDisplayInfo _spectrum;
+        private NodeTip _toolTip;
                 
+        private string _userSelectedSpectrum;
+        private SpectrumDisplayInfo _mirrorSpectrum;
+        private string _userSelectedMirrorSpectrum;
 
         private bool _inToolbarUpdate;
         // TODO
@@ -149,10 +221,13 @@ namespace pwiz.Skyline.Controls.Graphs
         private readonly GraphHelper _graphHelper;
         private MSGraphControl graphControl => msGraphExtension.Graph;
 
+        public ZedGraphControl ZedGraphControl => graphControl;
+
         public GraphSpectrum(IDocumentUIContainer documentUIContainer)
         {
             InitializeComponent();
             graphControl.ContextMenuBuilder += graphControl_ContextMenuBuilder;
+            graphControl.MouseMove += GraphControl_MouseMove;
             msGraphExtension.PropertiesSheetVisibilityChanged += msGraphExtension_PropertiesSheetVisibilityChanged;
 
             Icon = Resources.SkylineData;
@@ -182,6 +257,7 @@ namespace pwiz.Skyline.Controls.Graphs
         }
 
         private SpectrumGraphItem GraphItem { get; set; }
+        private SpectrumGraphItem MirrorGraphItem { get; set; }
 
         public Exception GraphException
         {
@@ -202,11 +278,11 @@ namespace pwiz.Skyline.Controls.Graphs
         public bool HasSpectrum { get { return GraphItem != null; }}
 
         /// <summary>
-        /// Normalized collisition energy for Koina
+        /// Normalized collision energy for Koina
         /// </summary>
         public int KoinaNCE
         {
-            get { return (int) comboCE.SelectedItem; }
+            get { return (int) (comboCE.SelectedItem ?? -1); }
             set { comboCE.SelectedItem = value; }
         }
 
@@ -300,7 +376,7 @@ namespace pwiz.Skyline.Controls.Graphs
             {
                 var newMods = DocumentUI.Settings.PeptideSettings.Modifications.StaticModsLosses;
                 var oldMods = e.DocumentPrevious.Settings.PeptideSettings.Modifications.StaticModsLosses;
-                var addedMods = newMods.ToList().FindAll(newMod => !oldMods.Contains(newMod)).ToList();
+                var addedMods = newMods.ToList().FindAll(newMod => !oldMods.Contains(newMod));
                 if (addedMods.Any())
                     Settings.Default.ShowLosses = Settings.Default.ShowLosses + @"," + addedMods.ToString(@",");
             }
@@ -314,6 +390,7 @@ namespace pwiz.Skyline.Controls.Graphs
                 !ReferenceEquals(DocumentUI.Settings.PeptideSettings.Libraries.Libraries,
                                  e.DocumentPrevious.Settings.PeptideSettings.Libraries.Libraries))
             {
+                _userSelectedSpectrum = _userSelectedMirrorSpectrum = null;
                 ZoomSpectrumToSettings();
                 Settings.Default.ShowLosses = DocumentUI.Settings.PeptideSettings.Modifications.StaticModsLosses.ToString(@",");
                 _updateManager.ClearPrecursors();
@@ -345,11 +422,6 @@ namespace pwiz.Skyline.Controls.Graphs
             axis.Scale.MinAuto = axis.Scale.MinAuto = false;
             axis.Scale.Min = xMin;
             axis.Scale.Max = xMax;
-        }
-
-        public void ZoomXAxis(double xMin, double xMax)
-        {
-            ZoomXAxis(GraphPane.XAxis, xMin, xMax);
         }
 
         public void ZoomSpectrumToSettings()
@@ -453,10 +525,10 @@ namespace pwiz.Skyline.Controls.Graphs
                     if (!Equals(selectedPrecursor, comboPrecursor.SelectedItem))
                     {
                         comboSpectrum.Items.Clear();
-                        comboMirrorSpectrum.Items.Clear();
-                        selectedSpectrum = null;
                         selectedSpectrumIndex = -1;
-                        selectedMirror = null;
+                        selectedSpectrum = _userSelectedSpectrum;
+                        comboMirrorSpectrum.Items.Clear();
+                        selectedMirror = _userSelectedMirrorSpectrum;
                     }
                 }
 
@@ -554,6 +626,16 @@ namespace pwiz.Skyline.Controls.Graphs
                     return;
                 }
             }
+        }
+
+        public void SelectSpectrum(string libraryName)
+        {
+            comboSpectrum.SelectedItem = libraryName;
+        }
+
+        public void SelectMirrorSpectrum(string libraryName)
+        {
+            comboMirrorSpectrum.SelectedItem = libraryName;
         }
 
         private bool SpectrumMatches(SpectrumDisplayInfo spectrumDisplayInfo, SpectrumIdentifier spectrumIdentifier)
@@ -1095,6 +1177,7 @@ namespace pwiz.Skyline.Controls.Graphs
             graphPane.CurveList.Clear();
             graphPane.GraphObjList.Clear();
             GraphItem = null;
+            AllowDisplayTip = false;
 
             GraphHelper.FormatGraphPane(graphControl.GraphPane);
             GraphHelper.FormatFontSize(graphControl.GraphPane, Settings.Default.SpectrumFontSize);
@@ -1291,7 +1374,10 @@ namespace pwiz.Skyline.Controls.Graphs
                         chromatogramData = spectrum?.LoadChromatogramData();
 
                     if (spectrum != null)
+                    {
                         GraphItem = MakeGraphItem(spectrum, selection, settings);
+                        AllowDisplayTip = true;
+                    }
 
                     if (null == chromatogramData)
                     {
@@ -1311,39 +1397,46 @@ namespace pwiz.Skyline.Controls.Graphs
                         else
                         {
                             mirrorSpectrum = null;
+                            MirrorGraphItem = null;
                         }
 
                         spectrumChanged |= !Equals(_mirrorSpectrum?.SpectrumInfo, mirrorSpectrum?.SpectrumInfo);
                         _mirrorSpectrum = mirrorSpectrum;
 
                         double? dotp = null;
-                        SpectrumGraphItem mirrorGraphItem = null;
+                        // need to keep it at the class level to be able to extract tooltip info.
+                        double? fullDotp = null;
                         if (mirrorSpectrum != null)
                         {
                             var peaksInfo = spectrum != null
                                 ? RescaleMirrorSpectrum(mirrorSpectrum, spectrum)
                                 : mirrorSpectrum.SpectrumPeaksInfo;
-                            mirrorGraphItem = MakeGraphItem(mirrorSpectrum, selection, settings, peaksInfo);
-                            mirrorGraphItem.Invert = true;
+                            MirrorGraphItem = MakeGraphItem(mirrorSpectrum, selection, settings, peaksInfo);
+                            MirrorGraphItem.Invert = true;
 
-                            _graphHelper.AddSpectrum(mirrorGraphItem, false);
+                            _graphHelper.AddSpectrum(MirrorGraphItem, false);
 
                             if (spectrum != null)
-                                dotp = KoinaHelpers.CalculateSpectrumDotpMzMatch(GraphItem.SpectrumInfo, mirrorGraphItem.SpectrumInfo,
+                            {
+                                dotp = KoinaHelpers.CalculateSpectrumDotpMzMatch(GraphItem.SpectrumInfo,
+                                    MirrorGraphItem.SpectrumInfo,
                                     settings.TransitionSettings.Libraries.IonMatchMzTolerance);
+                                fullDotp = KoinaHelpers.CalculateSpectrumDotpMzFull(GraphItem.SpectrumInfo.Peaks,
+                                    MirrorGraphItem.SpectrumInfo.Peaks,
+                                    settings.TransitionSettings.Libraries.IonMatchMzTolerance, true, false);
+                            }
                         }
 
-                        if (mirrorSpectrum != null && mirrorGraphItem != null) // one implies the other, but resharper..
+                        if (mirrorSpectrum != null && MirrorGraphItem != null) // one implies the other, but resharper..
                         {
                             GraphPane.Title.Text = dotp != null
                                 ? TextUtil.LineSeparate(
                                     string.Format(KoinaResources.GraphSpectrum_UpdateUI__0__vs___1_,
                                         GraphItem.LibraryName, mirrorSpectrum.Name),
-                                    SpectrumGraphItem.RemoveLibraryPrefix(GraphItem.Title, GraphItem.LibraryName),
-                                    string.Format(GraphsResources.GraphSpectrum_DoUpdate_dotp___0_0_0000_, dotp))
+                                    SpectrumGraphItem.RemoveLibraryPrefix(GraphItem.Title, GraphItem.LibraryName))
                                 : TextUtil.LineSeparate(
                                     mirrorSpectrum.Name,
-                                    mirrorGraphItem.Title,
+                                    MirrorGraphItem.Title,
                                     KoinaResources.GraphSpectrum_UpdateUI_No_spectral_library_match);
                         }
                         else if (koinaEx != null)
@@ -1371,6 +1464,26 @@ namespace pwiz.Skyline.Controls.Graphs
                                     libInfo.SpectrumHeaderInfo)
                                 .ChangePeptideNode(selection.NodePep);
                             var props = libInfo.CreateProperties(pepInfo, spectrum.Precursor, new LibKeyModificationMatcher());
+                            if (GraphItem != null)
+                            {
+                                props.PeakCount = GraphItem.SpectrumInfo.Peaks.Count(mi => mi.Intensity > 0)
+                                    .ToString(Formats.PEAK_AREA);
+                                props.TotalIC = GraphItem.SpectrumInfo.Peaks.Sum(mi => mi.Intensity)
+                                    .ToString(@"0.0000E+0", CultureInfo.CurrentCulture);
+                            }
+                            if (MirrorGraphItem != null)
+                            {
+                                props.MirrorPeakCount = MirrorGraphItem.SpectrumInfo.Peaks.Count(mi => mi.Intensity > 0)
+                                    .ToString(Formats.PEAK_AREA);
+                                props.MirrorTotalIC = MirrorGraphItem.SpectrumInfo.Peaks.Sum(mi => mi.Intensity)
+                                    .ToString(@"0.0000E+0", CultureInfo.CurrentCulture);
+                            }
+
+                            if (dotp.HasValue)
+                                props.KoinaDotpMatch = string.Format(GraphsResources.GraphSpectrum_DoUpdate_dotp___0_0_0000_, dotp);
+                            if (fullDotp.HasValue)
+                                props.KoinaDotpMatchFull =
+                                    string.Format(GraphsResources.GraphSpectrum_DoUpdate_dotp___0_0_0000_, fullDotp);
                             msGraphExtension.SetPropertiesObject(props);
                         }
                     }
@@ -1424,7 +1537,7 @@ namespace pwiz.Skyline.Controls.Graphs
                 msGraphExtension.SetPropertiesObject(null);
             }
         }
-
+        
         public bool ShowPropertiesSheet 
         {
             set
@@ -1635,6 +1748,7 @@ namespace pwiz.Skyline.Controls.Graphs
         {
             if (!_inToolbarUpdate)
             {
+                _userSelectedSpectrum = comboSpectrum.SelectedItem.ToString();
                 _updateManager.QueueUpdate(true);
             }
         }
@@ -1643,6 +1757,7 @@ namespace pwiz.Skyline.Controls.Graphs
         {
             if (!_inToolbarUpdate)
             {
+                _userSelectedMirrorSpectrum = comboMirrorSpectrum.SelectedItem.ToString();
                 UpdateUI();
             }
         }
@@ -1680,6 +1795,7 @@ namespace pwiz.Skyline.Controls.Graphs
                 0, // startPeakIndex
                 0, // startscoreindex
                 0,// maxPeakIndex
+                null, // maxPeakScore
                 chromGroup.Times.Length, // numPoints
                 0, // compressedSize
                 0, // uncompressedsize
@@ -1696,11 +1812,76 @@ namespace pwiz.Skyline.Controls.Graphs
             chromatogramInfo = new ChromatogramInfo(groupInfo, 0);
         }
 
+        public void DisplayTooltip(MouseEventArgs e)
+        {
+            LibraryRankedSpectrumInfo.RankedMI peakRmi = null;
+            using (var g = Graphics.FromHwnd(IntPtr.Zero))
+            {
+                // Check if the mouse is over a label
+                if (GraphPane.FindNearestObject(e.Location, g, out var nearestObject, out var index) && nearestObject is TextObj label)
+                {
+                    var screenRect = GraphPane.GetRectScreen(label, g);
+                    GraphPane.FindClosestCurve(GraphPane.CurveList, e.Location, (int)(screenRect.Width + screenRect.Height) , out var curve, out var closestPoint);
+                    if (curve.Tag is SpectrumGraphItem graphItem)
+                    {
+                        peakRmi = graphItem.SpectrumInfo.PeaksMatched.FirstOrDefault(rmi => graphItem.GetLabel(rmi).Equals(label.Text));
+                    }
+                }
+            }
+            // Check if the mouse is over a stick
+            if (GraphPane.FindNearestStick(e.Location, out var nearestCurve, out var nearestIndex))
+            {
+                if (nearestCurve != null)
+                {
+                    if (nearestIndex >= 0 && nearestIndex < nearestCurve.NPts)
+                    {
+                        var hasNegativePeaks = Enumerable.Range(0, nearestCurve.NPts)
+                            .Select(i => nearestCurve.Points[i]).Any(pt => pt.Y < 0);
+                        SpectrumGraphItem gItem = null;
+                        if (hasNegativePeaks)
+                            gItem = MirrorGraphItem;
+                        else
+                            gItem = GraphItem;
+                        // nearestIndex is in graph points. Need to convert it into the ranked spectrum index
+                        var spectrumIndex = Enumerable.Range(0, gItem.SpectrumInfo.Peaks.Count).FirstOrDefault(i =>
+                            gItem.SpectrumInfo.Peaks[i].ObservedMz == nearestCurve.Points[nearestIndex].X);
+                        peakRmi = gItem.SpectrumInfo.Peaks[spectrumIndex];
+                    }
+                }
+            }
+
+            if (peakRmi != null)
+            {
+                if (_toolTip == null)
+                    _toolTip = new NodeTip(this) { Parent = graphControl };
+                _toolTip.SetTipProvider(new ToolTipImplementation(peakRmi), new Rectangle(e.Location, new Size()), e.Location);
+                return;
+            }
+            _toolTip?.HideTip();
+            _toolTip = null;
+            graphControl.Invalidate();
+        }
+
+        public void GraphControl_MouseMove(object sender, MouseEventArgs e)
+        {
+            DisplayTooltip(e);
+        }
+        public Rectangle RectToScreen(Rectangle r)
+        {
+            return RectangleToScreen(r);
+        }
+
+        public Rectangle ScreenRect => Screen.GetBounds(this);
+
+        public bool AllowDisplayTip { get; private set; }
+
+
         #region Test support
 
         public ToolStripButton PropertyButton => propertiesButton;
         public MsGraphExtension MsGraphExtension => msGraphExtension;
         public ToolStripComboBox SpectrumCombo => comboSpectrum;
+        public NodeTip ToolTip => _toolTip;
 
         #endregion
 
@@ -1904,74 +2085,7 @@ namespace pwiz.Skyline.Controls.Graphs
         }
     }
 
-    public sealed class SpectrumDisplayInfo : IComparable<SpectrumDisplayInfo>
-    {
-        public SpectrumDisplayInfo(SpectrumInfo spectrumInfo, TransitionGroupDocNode precursor, double? retentionTime = null)
-        {
-            SpectrumInfo = spectrumInfo;
-            Precursor = precursor;
-            IsBest = true;
-            RetentionTime = retentionTime;
-        }
-
-        public SpectrumDisplayInfo(SpectrumInfo spectrumInfo, TransitionGroupDocNode precursor, string replicateName,
-            MsDataFileUri filePath, int fileOrder, double? retentionTime, bool isBest)
-        {
-            SpectrumInfo = spectrumInfo;
-            Precursor = precursor;
-            ReplicateName = replicateName;
-            FilePath = filePath;
-            FileOrder = fileOrder;
-            RetentionTime = retentionTime;
-            IsBest = isBest;
-        }
-
-        public SpectrumInfo SpectrumInfo { get; }
-        public TransitionGroupDocNode Precursor { get; private set; }
-        public string Name { get { return SpectrumInfo.Name; } }
-        public IsotopeLabelType LabelType { get { return SpectrumInfo.LabelType; } }
-        public string ReplicateName { get; private set; }
-        public bool IsReplicateUnique { get; set; }
-        public MsDataFileUri FilePath { get; private set; }
-        public string FileName { get { return FilePath.GetFileName(); } }
-        public int FileOrder { get; private set; }
-        public double? RetentionTime { get; private set; }
-        public bool IsBest { get; private set; }
-
-        public string Identity { get { return ToString(); } }
-
-        public SpectrumPeaksInfo SpectrumPeaksInfo { get { return SpectrumInfo.SpectrumPeaksInfo; } }
-        public LibraryChromGroup LoadChromatogramData() { return SpectrumInfo.ChromatogramData; }
-
-        public int CompareTo(SpectrumDisplayInfo other)
-        {
-            if (other == null) return 1;
-            int i = Comparer.Default.Compare(FileOrder, other.FileOrder);
-            if (i == 0)
-            {
-                if (RetentionTime.HasValue && other.RetentionTime.HasValue)
-                    i = Comparer.Default.Compare(RetentionTime.Value, other.RetentionTime);
-                // No retention time is less than having a retention time
-                else if (RetentionTime.HasValue)
-                    i = 1;
-                else if (other.RetentionTime.HasValue)
-                    i = -1;
-                else
-                    i = 0;
-            }
-
-            return i;
-        }
-
-        public override string ToString()
-        {
-            if (IsBest)
-                return ReferenceEquals(LabelType, IsotopeLabelType.light) ? Name : String.Format(@"{0} ({1})", Name, LabelType);
-            if (IsReplicateUnique)
-                return string.Format(@"{0} ({1:F02} min)", ReplicateName, RetentionTime);
-            return string.Format(@"{0} - {1} ({2:F02} min)", ReplicateName, FileName, RetentionTime);
-        }
-    }
+    // SpectrumDisplayInfo moved to pwiz.Skyline.Model.Lib.SpectrumDisplayInfo
 
     public sealed class SpectrumIdentifier
     {

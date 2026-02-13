@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original authors: Clark Brace <clarkbrace@gmail.com>,
  *                   Brendan MacLean <brendanx@proteinms.net
  *                   MacCoss Lab, Department of Genome Sciences, UW
@@ -24,6 +24,8 @@ using System.IO;
 using System.Linq;
 using System.Windows.Forms;
 using pwiz.Common.Collections;
+using pwiz.Common.SystemUtil;
+using pwiz.CommonMsData;
 using pwiz.Skyline.Controls;
 using pwiz.Skyline.FileUI;
 using pwiz.Skyline.Model;

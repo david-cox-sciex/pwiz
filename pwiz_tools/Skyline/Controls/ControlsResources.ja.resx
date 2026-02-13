@@ -169,6 +169,9 @@
   <data name="SequenceTreeForm_UpdateTitle_Targets_by_Preferred_Name" xml:space="preserve">
     <value>推奨名別ターゲット</value>
   </data>
+  <data name="SequenceTree_ExpansionTooLargeMessage" xml:space="preserve">
+    <value>展開のノード数が{0}であり、限界の{1}を超えているため、展開できません。</value>
+  </data>
   <data name="StatementCompletionForm_AddDescription_List_view_item_already_has_a_description" xml:space="preserve">
     <value>リストビューアイテムには既に説明があります</value>
   </data>
@@ -189,5 +192,8 @@
   </data>
   <data name="UndoRedoList_GetLabelText_Undo_1_Action" xml:space="preserve">
     <value>操作を1つ元に戻す</value>
+  </data>
+  <data name="NodeTip_Timer_Tick_An_error_occurred_displaying_a_tooltip_" xml:space="preserve">
+    <value>ツールヒントの表示中にエラーが発生しました。</value>
   </data>
 </root>

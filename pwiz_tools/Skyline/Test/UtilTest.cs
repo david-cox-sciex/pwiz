@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Brendan MacLean <brendanx .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -26,7 +26,9 @@ using System.Text;
 using pwiz.Skyline.Util;
 using pwiz.Skyline.Util.Extensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using pwiz.Common.CommonResources;
 using pwiz.Common.SystemUtil;
+using pwiz.PanoramaClient;
 using pwiz.Skyline.Model;
 using pwiz.SkylineTestUtil;
 
@@ -168,7 +170,7 @@ namespace pwiz.SkylineTest
 
         // Test the code to compare strings with same files on different paths
         [TestMethod]
-        public static void TestNoDiffIgnoringPathDifferences()
+        public void TestNoDiffIgnoringPathDifferences()
         {
             // No quotes, tab separated
             var line1 = "C:\\Dev\\FeatureFinding\\pwiz_tools\\Skyline\\SkylineTester Results\\HardklorFeatureDetectionTest\\MS1FilteringMzml_2\\Ms1FilteringMzml\\100803_0001_MCF7_TiB_L.mzML\t4056\t4065\t10\t2\t1223.5398\t612.7772\t6858\tc:\\tmp\\greeble\t21379\t36.4559\t36.9732\t36.6144\t0.9993\t_\t4057\tH104C54N15O16[+4.761216]\tc:\\tmp\\blorf";
@@ -459,6 +461,19 @@ namespace pwiz.SkylineTest
                         AssertEx.ThrowsException<IOException>(testFilesDir.Cleanup, x => AssertEx.Contains(x.Message, fileName));
                         DesiredCleanupLevel = DesiredCleanupLevel.all;  // Folders deleted
                         AssertEx.ThrowsException<IOException>(testFilesDir.Cleanup, x => AssertEx.Contains(x.Message, fileName));
+                        
+                        // Test FileLockingProcessFinder utility
+                        VerifyDeleteDirectoryWithFileLockingDetails(testFilesDir.FullPath, filePath);
+                        
+                        // Make sure it works recursively
+                        var subfolderPath = testFilesDir.GetTestPath(@"sub1\sub2\sub3");
+                        Directory.CreateDirectory(subfolderPath);
+                        var filePathDeep = Path.Combine(subfolderPath, "lock.txt");
+                        File.WriteAllText(filePathDeep, @"test");
+                        using (new StreamReader(filePathDeep))
+                        {
+                            VerifyDeleteDirectoryWithFileLockingDetails(testFilesDir.GetTestPath("sub1"), filePathDeep);
+                        }
                     }
                 }
                 // Now test successful cleanup
@@ -476,6 +491,40 @@ namespace pwiz.SkylineTest
             {
                 DesiredCleanupLevel = cleanupLevel;
             }
+        }
+
+        private static void VerifyDeleteDirectoryWithFileLockingDetails(string dirPath, string lockedFile)
+        {
+            // NB: We really do not want to see the error "was locked but has since been deleted"
+            //     since we know the file is locked and cannot have been deleted.
+            AssertEx.ThrowsException<IOException>(() => FileLockingProcessFinder.DeleteDirectoryWithFileLockingDetails(dirPath),
+                x => AssertEx.Contains(x.Message, lockedFile, MessageResources.FileLockingProcessFinder_ToFileLockingException_this_process));
+        }
+
+        /// <summary>
+        /// Verifies that Panorama exceptions are recognized as user-actionable errors,
+        /// not programming defects. This ensures users see friendly error messages
+        /// instead of crash dialogs when Panorama operations fail.
+        /// </summary>
+        [TestMethod]
+        public void TestPanoramaExceptionsUserActionable()
+        {
+            // PanoramaException and its subclasses should NOT be treated as programming defects
+            // because they inherit from IOException, which is recognized as user-actionable
+            var testUri = new Uri("https://panoramaweb.org/");
+
+            // Base class
+            Assert.IsFalse(ExceptionUtil.IsProgrammingDefect(new PanoramaException("Test error")));
+
+            // PanoramaServerException - used for server communication errors
+            Assert.IsFalse(ExceptionUtil.IsProgrammingDefect(new PanoramaServerException("Server error")));
+
+            // PanoramaImportErrorException - used when document import fails on server
+            // This was the bug reported in issue #3808: before the fix, this exception
+            // inherited from Exception instead of IOException, causing it to be treated
+            // as a programming defect and showing a crash dialog instead of a friendly error
+            Assert.IsFalse(ExceptionUtil.IsProgrammingDefect(
+                new PanoramaImportErrorException(testUri, testUri, "Import failed")));
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Nicholas Shulman <nicksh .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -239,6 +239,11 @@ namespace pwiz.Skyline.Controls.Databinding.RowActions
                 deletedPaths.Clear();
                 deletedPaths.Add(identityPath);
                 return null;
+            }
+
+            if (docNodeParent.AutoManageChildren && docNodeParent.Children.Count != newChildren.Count)
+            {
+                docNodeParent = docNodeParent.ChangeAutoManageChildren(false);
             }
             return docNodeParent.ChangeChildren(newChildren);
         }

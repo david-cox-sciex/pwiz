@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Nicholas Shulman <nicksh .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -23,7 +23,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Threading;
-using pwiz.Common.Properties;
+using pwiz.Common.CommonResources;
 
 namespace pwiz.Common.SystemUtil
 {
@@ -52,6 +52,20 @@ namespace pwiz.Common.SystemUtil
         private string _tmpDirForCleanup;
 
         /// <summary>
+        /// When greater than zero, this value is used to track progress percent complete.
+        /// </summary>
+        public int ExpectedOutputLinesCount { get; set; }
+        /// <summary>
+        /// This value tracks the total number of lines output on last call to Run, and is used to help track significant deviation from ExpectedOutputLinesCount.
+        /// </summary>
+        public int OutputLinesGenerated { get; private set; }
+
+        /// <summary>
+        /// When set to true this value prevents progress status message updates based on process output.
+        /// </summary>
+        public bool SilenceStatusMessageUpdates { get; set; }
+
+        /// <summary>
         /// Used in R package installation. We print progress % for processRunner progress
         /// but we dont want that output to be shown to the user when we display the output
         /// of the installation script to the immediate window. 
@@ -67,7 +81,7 @@ namespace pwiz.Common.SystemUtil
         public void Run(ProcessStartInfo psi, string stdin, IProgressMonitor progress, ref IProgressStatus status,
             ProcessPriorityClass priorityClass = ProcessPriorityClass.Normal, bool forceTempfilesCleanup = false)
         {
-            Run(psi, stdin, progress,ref status, null, priorityClass, forceTempfilesCleanup);
+            Run(psi, stdin, progress, ref status, null, priorityClass, forceTempfilesCleanup);
         }
 
         public void Run(ProcessStartInfo psi, string stdin, IProgressMonitor progress, ref IProgressStatus status, TextWriter writer,
@@ -86,7 +100,7 @@ namespace pwiz.Common.SystemUtil
             outputAndExitCodeAreGoodFunc ??= GoodIfExitCodeIsZero;
 
             _messageLog.Clear();
-            var cmd = $"{psi.FileName} {psi.Arguments}";
+            var cmd = $@"{psi.FileName} {psi.Arguments}";
 
             // Optionally create a subdir in the current TMP directory, run the new process with TMP set to that so we can clean it out afterward
             _tmpDirForCleanup = forceTempfilesCleanup ? SetTmpDirForCleanup(psi) : null;
@@ -118,7 +132,7 @@ namespace pwiz.Common.SystemUtil
             {
                 try
                 {
-                    proc.StandardInput.Write(stdin);
+                    proc.StandardInput.WriteLine(stdin);
                 }
                 finally
                 {
@@ -128,7 +142,7 @@ namespace pwiz.Common.SystemUtil
 
             if (ShowCommandAndArgs)
             {
-                foreach (var msg in new[]{string.Empty, Resources.ProcessRunner_Run_Run_command_, cmd, string.Empty, string.Empty})
+                foreach (var msg in new[]{string.Empty, MessageResources.ProcessRunner_Run_Run_command_, cmd, string.Empty, string.Empty})
                 {
                     if (!string.IsNullOrEmpty(msg))
                     {
@@ -151,10 +165,14 @@ namespace pwiz.Common.SystemUtil
                 StringBuilder sbError = new StringBuilder();
                 int percentLast = 0;
                 string line;
+                OutputLinesGenerated = 0;
                 while ((line = reader.ReadLine(progress)) != null)
                 {
                     if (writer != null && (HideLinePrefix == null || !line.StartsWith(HideLinePrefix)))
+                    {
                         writer.WriteLine(line);
+                        OutputLinesGenerated++;
+                    }
 
                     string lineLower = line.ToLowerInvariant();
                     if (progress == null || lineLower.StartsWith(@"error") || lineLower.StartsWith(@"warning"))
@@ -198,8 +216,18 @@ namespace pwiz.Common.SystemUtil
                             if (StatusPrefix != null)
                                 line = line.Substring(StatusPrefix.Length);
 
-                            status = status.ChangeMessage(line);
-                            progress.UpdateProgress(status);
+                            var statusOld = status;
+                            if (!SilenceStatusMessageUpdates)
+                                status = status.ChangeMessage(line);
+
+                            if (updateProgressPercentage && ExpectedOutputLinesCount > 0)
+                            {
+                                percentLast = Math.Min(99, OutputLinesGenerated * 100 / ExpectedOutputLinesCount);
+                                if (percentLast != status.PercentComplete)
+                                    status = status.ChangePercentComplete(percentLast);
+                            }
+                            if (!ReferenceEquals(status, statusOld))
+                                progress.UpdateProgress(status);
                         }
                     }
                 }
@@ -222,9 +250,9 @@ namespace pwiz.Common.SystemUtil
                         : psi.FileName;
                     // ReSharper disable LocalizableElement
                     sbError.AppendFormat("\r\nCommand-line: {0} {1}\r\nWorking directory: {2}{3}\r\nExit code: {4}", processPath,
-                        // ReSharper restore LocalizableElement
-                        string.Join(" ", proc.StartInfo.Arguments), psi.WorkingDirectory,
-                        stdin != null ? "\r\nStandard input:\r\n" + stdin : "", exit);
+                        CommonTextUtil.SpaceSeparate(proc.StartInfo.Arguments), psi.WorkingDirectory,
+                        stdin != null ? "\r\nStandard input:\r\n" + stdin : string.Empty, PInvoke.Kernel32.FormatExitCode(exit));
+                    // ReSharper restore LocalizableElement
                     throw new IOException(sbError.ToString());
                 }
 
@@ -261,9 +289,27 @@ namespace pwiz.Common.SystemUtil
             var sbText = new StringBuilder();
             sbText.AppendLine(exception.Message)
                 .AppendLine()
-                .AppendLine("Output:")
+                .AppendLine(@"Output:")
                 .AppendLine(output);
             throw new IOException(exception.Message, new IOException(sbText.ToString(), exception));
+        }
+
+        // Many external tools that we call can't deal with unicode characters, this helps with temp files they may create
+        public void ChangeTmpDirEnvironmentVariableToNonUnicodePath(ProcessStartInfo psi)
+        {
+            ChangeEnvironmentVariableToNonUnicodePath(psi, @"TMP");
+            ChangeEnvironmentVariableToNonUnicodePath(psi,@"TEMP");
+        }
+
+        // Look for unicode characters in path for in environment variable value, replace with 8.3
+        // Path has to exist, and volume has to support 8.3 format
+        public void ChangeEnvironmentVariableToNonUnicodePath(ProcessStartInfo psi, string key)
+        {
+            var tmp = PathEx.GetNonUnicodePath(psi.Environment[key]);
+            if (!string.IsNullOrEmpty(tmp))
+            {
+                psi.Environment[key] = tmp;
+            }
         }
 
         // Clean out any tempfiles left behind, if forceTempfilesCleanup was set

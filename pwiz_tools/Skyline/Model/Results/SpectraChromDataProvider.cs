@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Brendan MacLean <brendanx .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -27,6 +27,7 @@ using pwiz.Common.Chemistry;
 using pwiz.Common.Collections;
 using pwiz.Common.Spectra;
 using pwiz.Common.SystemUtil;
+using pwiz.CommonMsData;
 using pwiz.ProteowizardWrapper;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.Results.Spectra;
@@ -66,7 +67,7 @@ namespace pwiz.Skyline.Model.Results
         private BlockWriter _blockWriter;
         private bool _isSrm;
 
-        private readonly OptimizableRegression _optimization;
+        private readonly ChromatogramSet _chromatogramSet;
 
         private readonly object _disposeLock = new object();
         private bool _isDisposing;
@@ -118,8 +119,8 @@ namespace pwiz.Skyline.Model.Results
             // during interpolation.
             _isProcessedScans = dataFile.IsMzWiffXml;
 
-            _optimization = _document.Settings.MeasuredResults.Chromatograms
-                .FirstOrDefault(chromSet => chromSet.ContainsFile(fileInfo.FilePath))?.OptimizationFunction;
+            _chromatogramSet = _document.Settings.MeasuredResults.Chromatograms
+                .FirstOrDefault(chromSet => chromSet.IndexOfId(fileInfo.FileId) >= 0);
 
             UpdatePercentComplete();
 
@@ -130,7 +131,7 @@ namespace pwiz.Skyline.Model.Results
             // Create the filter responsible for chromatogram extraction
             bool firstPass = (_retentionTimePredictor != null);
             _filter = new SpectrumFilter(_document, FileInfo.FilePath, new DataFileInstrumentInfo(dataFile),
-                _optimization, _maxIonMobilityValue, _retentionTimePredictor, firstPass, _globalChromatogramExtractor);
+                _chromatogramSet, _maxIonMobilityValue, _retentionTimePredictor, firstPass, _globalChromatogramExtractor);
 
             if (!_isSrm && (_filter.EnabledMs || _filter.EnabledMsMs))
             {
@@ -225,7 +226,7 @@ namespace pwiz.Skyline.Model.Results
             var dataFile = _spectra.Detach();
 
             // Start the second pass
-            _filter = new SpectrumFilter(_document, FileInfo.FilePath, _filter, _optimization, _maxIonMobilityValue,
+            _filter = new SpectrumFilter(_document, FileInfo.FilePath, _filter, _chromatogramSet, _maxIonMobilityValue,
                 _retentionTimePredictor, false, _globalChromatogramExtractor);
             _spectra = null;
             _isSrm = false;
@@ -559,6 +560,10 @@ namespace pwiz.Skyline.Model.Results
                 var chromIds = new List<ChromKeyProviderIdPair>(_collectors.ChromKeys.Count);
                 for (int i = 0; i < _collectors.ChromKeys.Count; i++)
                     chromIds.Add(new ChromKeyProviderIdPair(_collectors.ChromKeys[i], i));
+                foreach (var globalChromatogram in _globalChromatogramExtractor.ListChromKeys())
+                {
+                    chromIds.Add(new ChromKeyProviderIdPair(globalChromatogram, chromIds.Count));
+                }
                 VerifyGlobalChromatograms(chromIds);
                 return chromIds;
             }
@@ -592,6 +597,7 @@ namespace pwiz.Skyline.Model.Results
             if (_isSrm)
                 return;
 
+            chromatogramRequestOrder = FilterOutGlobalChromatograms(chromatogramRequestOrder).ToList();
             if (_chromGroups != null)
                 _chromGroups.Dispose();
 
@@ -619,32 +625,49 @@ namespace pwiz.Skyline.Model.Results
             }
         }
 
+        private IEnumerable<IList<int>> FilterOutGlobalChromatograms(IList<IList<int>> chromatogramRequestOrder)
+        {
+            int extractedChromatogramCount = _collectors.ChromKeys.Count;
+            foreach (var group in chromatogramRequestOrder)
+            {
+                var ids = group.Where(id => id < extractedChromatogramCount).ToList();
+                if (ids.Count > 0)
+                {
+                    yield return ids;
+                }
+            }
+        }
+
         public override bool GetChromatogram(int id, ChromatogramGroupId chromatogramGroupId, Color peptideColor, out ChromExtra extra, out TimeIntensities timeIntensities)
         {
-            var chromKey = _collectors.ChromKeys.Count > id ? _collectors.ChromKeys[id] : null;
-            timeIntensities = null;
+            timeIntensities = TimeIntensities.EMPTY;
             extra = null;
-            if (SignedMz.ZERO.Equals(chromKey?.Precursor ?? SignedMz.ZERO))
+            bool isTicChromatogram;
+            if (id >= _collectors.ChromKeys.Count)
             {
                 int indexFirstGlobalChromatogram =
-                    _collectors.ChromKeys.Count - _globalChromatogramExtractor.ChromatogramCount;
+                    _collectors.ChromKeys.Count;
                 int indexInGlobalChromatogramExtractor = id - indexFirstGlobalChromatogram;
+                isTicChromatogram = indexInGlobalChromatogramExtractor ==
+                                    _globalChromatogramExtractor.TicChromatogramIndex;
                 if (_globalChromatogramExtractor.GetChromatogramAt(indexInGlobalChromatogramExtractor, out float[] times, out float[] intensities))
                 {
                     timeIntensities = new TimeIntensities(times, intensities, null, null);
                     extra = new ChromExtra(0, 0);
                 }
             }
-            if (null == timeIntensities)
+            else
             {
                 var statusId = _collectors.ReleaseChromatogram(id, _chromGroups, out timeIntensities);
                 extra = new ChromExtra(statusId, 0);
                 // Each chromatogram will be read only once!
                 _readChromatograms++;
+                var chromKey = _collectors.ChromKeys[id];
+                isTicChromatogram = SignedMz.ZERO.Equals(chromKey.Precursor) &&
+                                    ChromExtractor.summed == chromKey.Extractor;
             }
 
-            if (null != chromKey && SignedMz.ZERO.Equals(chromKey.Precursor) &&
-                ChromExtractor.summed == chromKey.Extractor && timeIntensities.NumPoints > 0)
+            if (isTicChromatogram && timeIntensities.NumPoints > 0)
             {
                 _ticArea = timeIntensities.Integral(0, timeIntensities.NumPoints - 1);
             }
@@ -950,7 +973,7 @@ namespace pwiz.Skyline.Model.Results
                         _currentInfo = _pendingInfoList.Take();
                         _currentInfo.SortEvent?.WaitOne();   // Until sorted
                         if (_exception != null)
-                            Helpers.WrapAndThrowException(_exception);
+                            ExceptionUtil.WrapAndThrowException(_exception);
                     }
                     else
                     {
@@ -1095,7 +1118,10 @@ namespace pwiz.Skyline.Model.Results
                                 if (msLevel > 1)
                                 {
                                     var precursors = _lookaheadContext.GetPrecursors(i, 1);
-                                    if (precursors.Any() && !_filter.HasProductFilterPairs(rtCheck, precursors))
+                                    var windowGroup = _filter.HasWindowGroupTable
+                                        ? _lookaheadContext.GetWindowGroup(i) // For diaPASEF
+                                        : null;
+                                    if (precursors.Any() && !_filter.HasProductFilterPairs(rtCheck, precursors, windowGroup))
                                     {
                                         continue;
                                     }
@@ -1339,7 +1365,7 @@ namespace pwiz.Skyline.Model.Results
                 }
 
                 // Propagate exception from provider thread.
-                Helpers.WrapAndThrowException(_exception);
+                ExceptionUtil.WrapAndThrowException(_exception);
                 throw _exception;   // Unreachable code, but keeps compiler happy
             }
 
@@ -1408,6 +1434,14 @@ namespace pwiz.Skyline.Model.Results
                     return _lookAheadDataSpectrum.GetPrecursorsByMsLevel(level);
                 else
                     return _dataFile.GetPrecursors(index, level);
+            }
+
+            public int? GetWindowGroup(int index)
+            {
+                if (index == _lookAheadIndex && _lookAheadDataSpectrum != null)
+                    return _lookAheadDataSpectrum.WindowGroup;
+                else
+                    return _dataFile.GetWindowGroup(index);
             }
 
             public MsDataSpectrum GetSpectrum(int index)
@@ -1582,6 +1616,8 @@ namespace pwiz.Skyline.Model.Results
 
         public bool HasDeclaredMSnSpectra { get { return _dataFile.HasDeclaredMSnSpectra; } }
 
+        public bool PassEntireDiaPasefFrame { get { return _dataFile.PassEntireDiaPasefFrame; }} // For Bruker TIMSTOF data
+
         public IEnumerable<MsInstrumentConfigInfo> ConfigInfoList
         {
             get { return _dataFile.GetInstrumentConfigInfoList(); }
@@ -1614,6 +1650,12 @@ namespace pwiz.Skyline.Model.Results
         public Tuple<int, int> SonarMzToBinRange(double mz, double tolerance)
         {
             return _dataFile.SonarMzToBinRange(mz, tolerance);
+        }
+
+        // Sanity check, useful in debugging
+        public bool IsValidDiaPasefPoint(int windowGroup, double im, double isoMzLow, double isoMzHigh)
+        {
+            return _dataFile.IsValidDiaPasefPoint(windowGroup, im, isoMzLow, isoMzHigh);
         }
     }
     internal enum TimeSharing { single, shared, grouped }

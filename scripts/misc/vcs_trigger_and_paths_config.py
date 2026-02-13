@@ -94,6 +94,7 @@ targets['Linux'] = merge(targets['CoreLinux'], targets['BumbershootLinux'])
 # "pwiz_tools/Bumbershoot/Jamfile.jam" matches both "pwiz_tools/Bumbershoot/.*" and "pwiz_tools/.*", but will only trigger "Bumbershoot" targets
 matchPaths = [
     (".*/smartBuildTrigger.py", {}),
+    (".*/ai/.*", {}),
     ("libraries/.*", targets['All']),
     ("pwiz/.*", targets['All']),
     ("pwiz_aux/.*", targets['All']),
@@ -111,7 +112,7 @@ matchPaths = [
     ("pwiz_tools/Shared/.*", merge(targets['Skyline'], targets['BumbershootRelease'], targets['Container'])),
     ("pwiz_tools/.*", targets['All']),
     ("Jamroot.jam", targets['All']),
-    ("*.bat", targets['Windows']),
-    ("*.sh", targets['Linux'])
+    (".*\\.bat", targets['Windows']),
+    (".*\\.sh", targets['Linux'])
 ]
 

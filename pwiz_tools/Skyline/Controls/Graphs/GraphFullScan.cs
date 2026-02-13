@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Don Marsh <donmarsh .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -27,6 +27,8 @@ using System.Text;
 using System.Windows.Forms;
 using pwiz.Common.Chemistry;
 using pwiz.Common.Collections;
+using pwiz.Common.SystemUtil;
+using pwiz.CommonMsData;
 using pwiz.MSGraph;
 using pwiz.ProteowizardWrapper;
 using pwiz.Skyline.Alerts;
@@ -1154,10 +1156,10 @@ namespace pwiz.Skyline.Controls.Graphs
         public void FireSelectedScanChanged(double retentionTime)
         {
             IsLoaded = true;
+            var transitionId = _msDataFileScanHelper.CurrentTransition?.Id;
             SelectedScanChanged?.Invoke(this,
-                _msDataFileScanHelper.MsDataSpectra != null
-                    ? new SelectedScanEventArgs(_msDataFileScanHelper.ScanProvider.DataFilePath, retentionTime,
-                        _msDataFileScanHelper.ScanProvider.Transitions[_msDataFileScanHelper.TransitionIndex].Id,
+                _msDataFileScanHelper.MsDataSpectra != null && transitionId != null
+                    ? new SelectedScanEventArgs(_msDataFileScanHelper.ScanProvider.DataFilePath, retentionTime, transitionId,
                         _msDataFileScanHelper.OptStep)
                     : new SelectedScanEventArgs(null, 0, null, null));
         }
@@ -1209,7 +1211,7 @@ namespace pwiz.Skyline.Controls.Graphs
                 xScale.Min = mz - 1.5;
                 xScale.Max = mz + 3.5;
             }
-            else
+            else if (_requestedRange != null)
             {
                 xScale.Min = _requestedRange.Min;
                 xScale.Max = _requestedRange.Max;

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Nicholas Shulman <nicksh .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -127,7 +127,7 @@ namespace pwiz.Skyline.Model.ElementLocators.ExportAnnotations
         public SrmDocument ReadAnnotationsFromTextReader(CancellationToken cancellationToken, TextReader textReader)
         {
             DataSchema.BeginBatchModifyDocument();
-            var dsvReader = new DsvFileReader(textReader, TextUtil.SEPARATOR_CSV);
+            using var dsvReader = new DsvFileReader(textReader, TextUtil.SEPARATOR_CSV);
             ReadAllAnnotations(cancellationToken, dsvReader);
             DataSchema.CommitBatchModifyDocument(string.Empty, null);
             return DataSchema.Document;

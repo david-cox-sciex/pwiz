@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Nicholas Shulman <nicksh .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -53,6 +53,7 @@ namespace TutorialLocalization
             File.Delete(outputFile);
             var zipFile = new Ionic.Zip.ZipFile(outputFile, Encoding.UTF8);
             var tutorialsLocalizer = new TutorialsLocalizer(zipFile);
+            tutorialsLocalizer.ReadLocalizationCsvFiles(folderPath);
             foreach (var subfolder in Directory.GetDirectories(folderPath))
             {
                 tutorialsLocalizer.AddTutorialFolder(subfolder, Path.GetFileName(subfolder));

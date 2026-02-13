@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Brendan MacLean <brendanx .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -49,8 +49,6 @@ using pwiz.Common.Collections;
 using pwiz.ProteowizardWrapper;
 using pwiz.Skyline.Controls.Graphs;
 using pwiz.Skyline.Model.DocSettings.AbsoluteQuantification;
-using pwiz.Skyline.Model.GroupComparison;
-using pwiz.Skyline.Model.Lists;
 using pwiz.Skyline.Model.Results;
 using pwiz.Skyline.Model.Themes;
 using pwiz.Skyline.Util.Extensions;
@@ -195,7 +193,7 @@ namespace pwiz.Skyline.Properties
         {
             get
             {
-                return new LockMassParameters(
+                return LockMassParameters.Create(
                     LockMassPositive == 0 ? (double?) null : LockMassPositive,
                     LockMassNegative == 0 ? (double?) null : LockMassNegative,
                     LockMassTolerance == 0 ? (double?) null : LockMassTolerance);
@@ -1203,6 +1201,26 @@ namespace pwiz.Skyline.Properties
         }
 
         [UserScopedSetting]
+        public SearchToolList SearchToolList
+        {
+            get
+            {
+                var list = (SearchToolList)this[@"SearchToolList"];
+                if (list == null)
+                {
+                    list = new SearchToolList();
+                    list.AddDefaults();
+                    SearchToolList = list;
+                }
+                return list;
+            }
+            set
+            {
+                this[@"SearchToolList"] = value;
+            }
+        }
+
+        [UserScopedSetting]
         public RemoteAccountList RemoteAccountList
         {
             get 
@@ -1332,6 +1350,35 @@ namespace pwiz.Skyline.Properties
             set
             {
                 this[nameof(ArdiaRegistrationCodeEntries)] = value;
+            }
+        }
+
+        [UserScopedSetting]
+        public bool? ShowExemplaryPeakBounds
+        {
+            get
+            {
+                return (bool?)this[nameof(ShowExemplaryPeakBounds)];
+            }
+            set
+            {
+                this[nameof(ShowExemplaryPeakBounds)] = value;
+            }
+        }
+        public RtCalculatorOption RtCalculatorOption
+        {
+            get
+            {
+                var calcName = RTCalculatorName;
+                if (string.IsNullOrEmpty(calcName))
+                {
+                    return null;
+                }
+                return RtCalculatorOption.FromPersistentString(calcName);
+            }
+            set
+            {
+                RTCalculatorName = value?.ToPersistentString();
             }
         }
     }
@@ -1591,6 +1638,58 @@ namespace pwiz.Skyline.Properties
             return new Server(item.URI, item.Username, item.Password);
         }
     }
+
+    public sealed class SearchToolList : SettingsList<SearchTool>
+    {
+        public override IEnumerable<SearchTool> GetDefaults(int revisionIndex)
+        {
+            yield break;
+        }
+
+        public override string Title => PropertiesResources.SearchToolList_Title_Edit_Search_Tools;
+        public override string Label => PropertiesResources.SearchToolList_Label_Search__Tools;
+        public override SearchTool EditItem(Control owner, SearchTool item, IEnumerable<SearchTool> existing, object tag)
+        {
+            using (var editTool = new EditSearchToolDlg(existing ?? this))
+            {
+                editTool.SearchTool = item;
+                if (editTool.ShowDialog(owner) == DialogResult.OK)
+                    return editTool.SearchTool;
+
+                return null;
+            }
+        }
+
+        public override SearchTool CopyItem(SearchTool item)
+        {
+            return new SearchTool(item.Name, item.Path, item.ExtraCommandlineArgs, item.InstallPath, item.AutoInstalled);
+        }
+        
+        public static SearchToolList CopyTools(IEnumerable<SearchTool> list)
+        {
+            var listCopy = new SearchToolList();
+            listCopy.AddRange(list.Select(t => new SearchTool(t.Name, t.Path, t.ExtraCommandlineArgs, t.InstallPath, t.AutoInstalled)));
+            return listCopy;
+        }
+
+        public bool ContainsKey(SearchToolType toolType) => ContainsKey(toolType.ToString());
+        public SearchTool this[SearchToolType toolType] => this[toolType.ToString()];
+
+        public string GetToolPathOrDefault(SearchToolType toolType, string defaultPath)
+        {
+            if (ContainsKey(toolType.ToString()))
+                return this[toolType.ToString()].Path;
+            return defaultPath;
+        }
+
+        public string GetToolArgsOrDefault(SearchToolType toolType, string defaultArgs)
+        {
+            if (ContainsKey(toolType.ToString()))
+                return this[toolType.ToString()].ExtraCommandlineArgs;
+            return defaultArgs;
+        }
+    }
+
 
     public sealed class SpectralLibraryList : SettingsListNotifying<LibrarySpec>
     {
@@ -2328,29 +2427,49 @@ namespace pwiz.Skyline.Properties
             return RetentionTimeRegression.CalculatorXmlHelpers;
         }
 
-        public void Initialize(IProgressMonitor loadMonitor)
+        public static RetentionScoreCalculatorSpec[] Initialize(RetentionScoreCalculatorSpec[] calculatorSpecs,
+            IProgressMonitor loadMonitor)
         {
-            foreach (var calc in this.ToArray())
-                Initialize(loadMonitor, calc);
+            var status = new ProgressStatus().ChangeSegments(0, calculatorSpecs.Length);
+            var list = new List<RetentionScoreCalculatorSpec>();
+            foreach (var calc in calculatorSpecs)
+            {
+                list.Add(Initialize(calc, loadMonitor, ref status));
+                status = status.NextSegment();
+                loadMonitor?.UpdateProgress(status);
+            }
+            return list.ToArray();
         }
 
-        public RetentionScoreCalculatorSpec Initialize(IProgressMonitor loadMonitor, RetentionScoreCalculatorSpec calc)
+
+        public static RetentionScoreCalculatorSpec Initialize(RetentionScoreCalculatorSpec calc,
+            IProgressMonitor loadMonitor)
+        {
+            IProgressStatus status = new ProgressStatus();
+            return Initialize(calc, loadMonitor, ref status);
+        }
+
+        private static RetentionScoreCalculatorSpec Initialize(RetentionScoreCalculatorSpec calc,
+            IProgressMonitor loadMonitor, ref IProgressStatus status)
         {
             if (calc == null)
                 return null;
 
             try
             {
-                var calcInit = calc.Initialize(loadMonitor);
-                if (!Equals(calc.Name, XmlNamedElement.NAME_INTERNAL) && !ReferenceEquals(calcInit, calc))
-                    SetValue(calcInit);
-                calc = calcInit;
+                return calc.Initialize(loadMonitor, ref status);
             }
             catch (CalculatorException)
             {
                 //Consider: Should we really fail silently?
+                return calc;
             }
-            return calc;
+        }
+
+        public void SetInitializedValue(RetentionScoreCalculatorSpec calcOrig, RetentionScoreCalculatorSpec calcInit)
+        {
+            if (calcInit != null && !Equals(calcOrig.Name, XmlNamedElement.NAME_INTERNAL) && !ReferenceEquals(calcInit, calcOrig))
+                SetValue(calcInit);
         }
 
         public override string Title { get { return PropertiesResources.RTScoreCalculatorList_Title_Edit_Retention_Time_Calculators; } }
@@ -3041,7 +3160,7 @@ namespace pwiz.Skyline.Properties
         public override IsolationScheme EditItem(Control owner, IsolationScheme item,
             IEnumerable<IsolationScheme> existing, object tag)
         {
-            using (var editIsolationScheme = new EditIsolationSchemeDlg(existing ?? this))
+            using (var editIsolationScheme = new EditIsolationSchemeDlg(existing ?? this, tag as SrmSettings))
             {
                 editIsolationScheme.IsolationScheme = item;
                 if (editIsolationScheme.ShowDialog(owner) == DialogResult.OK)
@@ -3386,9 +3505,9 @@ namespace pwiz.Skyline.Properties
             return (ReportSpec) item.ChangeName(string.Empty);
         }
 
-        public override string Title { get { return Resources.ReportSpecList_Title_Edit_Reports; } }
+        public override string Title { get { return PropertiesResources.ReportSpecList_Title_Edit_Reports; } }
 
-        public override string Label { get { return Resources.ReportSpecList_Label_Report; } }
+        public override string Label { get { return PropertiesResources.ReportSpecList_Label_Report; } }
 
         public override Type SerialType { get { return typeof(ReportSpecList); } }
 

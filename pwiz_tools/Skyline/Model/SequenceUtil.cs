@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Brendan MacLean <brendanx .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -24,6 +24,7 @@ using System.Linq;
 using System.Text;
 using pwiz.Common.Chemistry;
 using pwiz.Common.Collections;
+using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Model.Crosslinking;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.Results;
@@ -1251,7 +1252,7 @@ namespace pwiz.Skyline.Model
 
         public static ParsedMolecule GetHeavyFormula(ParsedMolecule formula, LabelAtoms labelAtoms)
         {
-            if (labelAtoms == LabelAtoms.None)
+            if (labelAtoms == LabelAtoms.None || formula == null)
             {
                 return formula;
             }

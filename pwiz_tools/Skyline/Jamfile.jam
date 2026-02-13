@@ -27,13 +27,18 @@ if [ modules.peek : NT ] && --i-agree-to-the-vendor-licenses in [ modules.peek :
     path-constant BIBLIO_SPEC_PATH :  $(PWIZ_ROOT_PATH)/pwiz_tools/Shared/BiblioSpec ;
     path-constant CRT_PATH : "$(SKYLINE_PATH)/University of Washington (MacCoss Lab).crt" ;
     constant CRT_KEY : "key_637015839" ;
+
     path-constant NUGET_PATH : "C:/Program Files/dotnet/dotnet.exe" ;
     if ! [ path.exists $(NUGET_PATH) ]
     {
-        path-constant NUGET_PATH : "C:/Program Files/Microsoft Visual Studio/2022/Community/dotnet/runtime/dotnet.exe" ;
+        path-constant NUGET_PATH : "C:/Program Files/Microsoft Visual Studio/18/Community/dotnet/net8.0/runtime/dotnet.exe" ;
         if ! [ path.exists $(NUGET_PATH) ]
         {
-            path-constant NUGET_PATH : "C:/Program Files/Microsoft Visual Studio/2022/Community/dotnet/net8.0/runtime/dotnet.exe" ;
+            path-constant NUGET_PATH : "C:/Program Files/Microsoft Visual Studio/2022/Community/dotnet/runtime/dotnet.exe" ;
+            if ! [ path.exists $(NUGET_PATH) ]
+            {
+                path-constant NUGET_PATH : "C:/Program Files/Microsoft Visual Studio/2022/Community/dotnet/net8.0/runtime/dotnet.exe" ;
+            }
         }
     }
 
@@ -43,16 +48,31 @@ if [ modules.peek : NT ] && --i-agree-to-the-vendor-licenses in [ modules.peek :
        SHELL "git submodule update --init --recursive" ;
     }
 
-    local ymd = [ MATCH "([0-9][0-9][0-9][0-9])-([0-9][0-9])-([0-9][0-9])" : [ modules.peek : JAMDATE ] ] ;
+    # Use Git commit date for version day-of-year (reproducible versioning)
+    local git_date = [ SHELL "git log -1 --format=%cs HEAD" ] ;
+    local ymd = [ MATCH "([0-9][0-9][0-9][0-9])-([0-9][0-9])-([0-9][0-9])" : $(git_date) ] ;
+    if ! $(ymd)
+    {
+        # Fallback to build machine date if git date extraction fails
+        local utc = [ modules.peek : JAMDATE ] ;
+        ymd = [ MATCH "([0-9][0-9][0-9][0-9])-([0-9][0-9])-([0-9][0-9])" : $(utc) ] ;
+    }
     local year_2digit = [ MATCH "[0-9][0-9]([0-9][0-9])" : $(ymd) ] ;
 
-    constant SKYLINE_YEAR : 24 ;
+    constant SKYLINE_YEAR : 25 ;
     constant SKYLINE_ORDINAL : 1 ; # A count of official releases made so far this year
     constant SKYLINE_BRANCH : 1 ; # 0 - release, 1 - daily, 9 - feature complete daily
 
     # when releasing a patch for a previous year, the day-of-year component will be incremented by 365 for each year difference
     # (figuring out leap year here seems like overkill)
-    constant SKYLINE_DOY : [ CALC [ CALC [ CALC $(year_2digit) - $(SKYLINE_YEAR) ] * 365 ] + [ day_of_year $(ymd) ] ] ;
+    local doy = [ CALC [ CALC [ CALC $(year_2digit) - $(SKYLINE_YEAR) ] * 365 ] + [ day_of_year $(ymd) ] ] ;
+
+    # Zero-pad day-of-year to 3 digits for chronological sorting (e.g., 004 not 4)
+    local doy_padded = $(doy) ;
+    if [ MATCH "^(.)$" : $(doy) ] { doy_padded = "00$(doy)" ; }
+    else if [ MATCH "^(..)$" : $(doy) ] { doy_padded = "0$(doy)" ; }
+
+    constant SKYLINE_DOY : $(doy_padded) ;
     constant SKYLINE_TIMESTAMP : $(SKYLINE_BRANCH) $(SKYLINE_DOY) ;
 
     local v = $(SKYLINE_YEAR) $(SKYLINE_ORDINAL) $(SKYLINE_BRANCH) $(SKYLINE_DOY) ;
@@ -159,7 +179,11 @@ if [ modules.peek : NT ] && --i-agree-to-the-vendor-licenses in [ modules.peek :
 
         echo Building Skyline in $(CONFIGURATION:L) configuration...
         msbuild $(SKYLINE_PATH)/Skyline.sln /p:Configuration=$(CONFIGURATION);Platform=$(PLATFORM);OutDir=$(OUTPUT_PATH);MSBuildAssemblyName=$(TARGET_NAME) /t:SkylineCmd /nologo /verbosity:minimal
+        IF ERRORLEVEL 1 exit %ERRORLEVEL%
+
         msbuild $(SKYLINE_PATH)/Skyline.sln /p:Configuration=$(CONFIGURATION);Platform=$(PLATFORM);OutDir=$(OUTPUT_PATH);MSBuildAssemblyName=$(TARGET_NAME) /t:Skyline /t:TestRunner /nologo /verbosity:minimal
+        IF ERRORLEVEL 1 exit %ERRORLEVEL%
+
         msbuild $(SKYLINE_PATH)/Executables/AssortResources/AssortResources.sln /p:Configuration=$(CONFIGURATION);Platform="Any CPU";OutDir=$(OUTPUT_PATH) /t:AssortResources /nologo /verbosity:minimal
         IF ERRORLEVEL 1 exit %ERRORLEVEL%
     }
@@ -214,7 +238,7 @@ if [ modules.peek : NT ] && --i-agree-to-the-vendor-licenses in [ modules.peek :
         IF ERRORLEVEL 1 exit %ERRORLEVEL%
 
         echo Unit testing Skyline in $(CONFIGURATION:L) configuration...
-        $(OUTPUT_PATH)/TestRunner.exe log=Test.log buildcheck=1 test=Test.dll $(.teamcity-test-decoration)
+        $(OUTPUT_PATH)TestRunner.exe log=Test.log buildcheck=1 test=Test.dll $(.teamcity-test-decoration)
         set status=%ERRORLEVEL%
         exit %status%
     }
@@ -233,7 +257,7 @@ if [ modules.peek : NT ] && --i-agree-to-the-vendor-licenses in [ modules.peek :
         IF ERRORLEVEL 1 exit %ERRORLEVEL%
 
         echo Unit testing pwiz data reading in Skyline in $(CONFIGURATION:L) configuration...
-        $(OUTPUT_PATH)/TestRunner.exe log=TestData.log buildcheck=1 test=TestData.dll $(.teamcity-test-decoration)
+        $(OUTPUT_PATH)TestRunner.exe log=TestData.log buildcheck=1 test=TestData.dll $(.teamcity-test-decoration)
         set status=%ERRORLEVEL%
         exit %status%
     }
@@ -252,7 +276,7 @@ if [ modules.peek : NT ] && --i-agree-to-the-vendor-licenses in [ modules.peek :
         IF ERRORLEVEL 1 exit %ERRORLEVEL%
 
         echo Testing subset of Skyline's leak checking (pass1) in $(CONFIGURATION:L) configuration...
-        $(OUTPUT_PATH)/TestRunner.exe log=TestPass1Subset.log buildcheck=1 pass1=on pass2=off test=TestInstrumentInfo,TestQcTraces,TestTicChromatogram,TestDiaSearchFixedWindows $(.teamcity-test-decoration)
+        $(OUTPUT_PATH)TestRunner.exe log=TestPass1Subset.log buildcheck=1 pass1=on pass2=off test=TestInstrumentInfo,TestQcTraces,TestTicChromatogram,TestDiaSearchFixedWindows $(.teamcity-test-decoration)
         set status=%ERRORLEVEL%
         exit %status%
     }
@@ -412,6 +436,24 @@ if [ modules.peek : NT ] && --i-agree-to-the-vendor-licenses in [ modules.peek :
 
     notfile NugetRestore : @do_nuget_restore ;
 
+    install install-native-dependencies
+        : # sources
+            ../../pwiz_tools/commandline//msconvert
+            ../../pwiz/utility/bindings/CLI//pwiz_data_cli
+            ../../pwiz/utility/bindings/CLI//pwiz_data_cli.xml
+            ../../pwiz/utility/bindings/CLI/timstof_prm_scheduler//PrmPasefScheduler
+            ../../pwiz/utility/bindings/CLI/timstof_prm_scheduler//PrmPasefScheduler.xml
+            TestDiagnostics//TestDiagnostics
+        : # requirements
+            <location>$(PWIZ_WRAPPER_PATH)/obj/$(PLATFORM)
+            <install-type>EXE
+            <install-type>CONFIG
+            <install-type>SHARED_LIB
+            <install-dependencies>on
+        ;
+
+    install install-bibliospec : ../BiblioSpec/src//install : <location>$(BIBLIO_SPEC_PATH)/obj/$(PLATFORM) ;
+
     # this is really the main action for building Skyline and leaving Skyline.exe intact, but it is explicit 
     make Skyline.exe
         : # sources
@@ -423,21 +465,14 @@ if [ modules.peek : NT ] && --i-agree-to-the-vendor-licenses in [ modules.peek :
             <conditional>@msvc-dotnet-requirement
             <assembly>../../pwiz/utility/bindings/CLI//pwiz_data_cli
             <assembly>../../pwiz/utility/bindings/CLI/timstof_prm_scheduler//PrmPasefScheduler
-            <dependency>../../pwiz_tools/commandline//msconvert/<location>$(PWIZ_WRAPPER_PATH)/obj/$(PLATFORM)
             <assembly>TestDiagnostics//TestDiagnostics
+            <dependency>install-native-dependencies
+            <dependency>install-bibliospec
             <conditional>@build-location
             #<conditional>@install-vendor-api-dependencies
             <conditional>@install-vendor-api-dependencies-to-debug-and-release
             <dependency>NugetRestore
-            <dependency>../../pwiz/utility/bindings/CLI//pwiz_data_cli/<location>$(PWIZ_WRAPPER_PATH)/obj/$(PLATFORM)
-            <dependency>../../pwiz/utility/bindings/CLI//pwiz_data_cli.xml/<location>$(PWIZ_WRAPPER_PATH)/obj/$(PLATFORM)
-            <dependency>../../pwiz/utility/bindings/CLI/timstof_prm_scheduler//PrmPasefScheduler/<location>$(PWIZ_WRAPPER_PATH)/obj/$(PLATFORM)
-            <dependency>../../pwiz/utility/bindings/CLI/timstof_prm_scheduler//PrmPasefScheduler.xml/<location>$(PWIZ_WRAPPER_PATH)/obj/$(PLATFORM)
-            <dependency>TestDiagnostics//TestDiagnostics/<location>$(PWIZ_WRAPPER_PATH)/obj/$(PLATFORM)
             <dependency>Executables/Hardklor//Hardklor/<location>$(SKYLINE_PATH)/Executables/Hardklor/obj/$(PLATFORM)
-            <dependency>../../pwiz_tools/BiblioSpec/src//BlibBuild/<location>$(BIBLIO_SPEC_PATH)/obj/$(PLATFORM)
-            <dependency>../../pwiz_tools/BiblioSpec/src//BlibFilter/<location>$(BIBLIO_SPEC_PATH)/obj/$(PLATFORM)
-            <dependency>../../pwiz_tools/BiblioSpec/src//BlibToMs2/<location>$(BIBLIO_SPEC_PATH)/obj/$(PLATFORM)
             <dependency>$(PWIZ_ROOT_PATH)//INSTALLER_VENDOR_FILES.txt
             <dependency>KoinaConfig.xml
     ;
@@ -477,10 +512,7 @@ if [ modules.peek : NT ] && --i-agree-to-the-vendor-licenses in [ modules.peek :
             <assembly>../../pwiz/utility/bindings/CLI/timstof_prm_scheduler//PrmPasefScheduler
             <conditional>@build-location
             <dependency>Skyline.exe
-            <dependency>../../pwiz/utility/bindings/CLI//pwiz_data_cli/<location>$(PWIZ_WRAPPER_PATH)/obj/$(PLATFORM)
-            <dependency>../../pwiz/utility/bindings/CLI//pwiz_data_cli.xml/<location>$(PWIZ_WRAPPER_PATH)/obj/$(PLATFORM)
-            <dependency>../../pwiz/utility/bindings/CLI/timstof_prm_scheduler//PrmPasefScheduler/<location>$(PWIZ_WRAPPER_PATH)/obj/$(PLATFORM)
-            <dependency>../../pwiz/utility/bindings/CLI/timstof_prm_scheduler//PrmPasefScheduler.xml/<location>$(PWIZ_WRAPPER_PATH)/obj/$(PLATFORM)
+            <dependency>install-native-dependencies
             <dependency>../../pwiz_aux/msrc/utility/vendor_api/Waters//install_pwiz_vendor_api_waters/<location>$(PWIZ_WRAPPER_PATH)/obj/$(PLATFORM)
             <dependency>../../pwiz_tools/BiblioSpec/src//BlibBuild/<runtime-debugging>off/<location>$(BIBLIO_SPEC_PATH)/obj/$(PLATFORM)
             <dependency>../../pwiz_tools/BiblioSpec/src//BlibFilter/<runtime-debugging>off/<location>$(BIBLIO_SPEC_PATH)/obj/$(PLATFORM)

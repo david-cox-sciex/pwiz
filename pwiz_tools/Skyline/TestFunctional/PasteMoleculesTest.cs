@@ -30,6 +30,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using pwiz.Common.Chemistry;
 using pwiz.Common.DataBinding;
 using pwiz.Common.SystemUtil;
+using pwiz.CommonMsData;
 using pwiz.Skyline.Alerts;
 using pwiz.Skyline.Controls.Databinding;
 using pwiz.Skyline.EditUI;
@@ -37,7 +38,6 @@ using pwiz.Skyline.FileUI;
 using pwiz.Skyline.Model;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.DocSettings.Extensions;
-using pwiz.Skyline.Model.Results;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.SettingsUI;
 using pwiz.Skyline.Util;
@@ -1407,7 +1407,7 @@ namespace pwiz.SkylineTestFunctional
 
         private static string GetAminoAcidsTransitionListText(out string textCSV)
         {
-            var header = string.Join(",", new string[]
+            var header = string.Join(",", new[]
             {
                 SmallMoleculeTransitionListColumnHeaders.moleculeGroup,
                 SmallMoleculeTransitionListColumnHeaders.namePrecursor,
@@ -2710,7 +2710,7 @@ namespace pwiz.SkylineTestFunctional
                 var withHeaders = pass == 1;     // Double check that headers work too
 
                 var input = withHeaders ?
-                    string.Join(",", new string[]
+                    string.Join(",", new[]
                     {
                         SmallMoleculeTransitionListColumnHeaders.moleculeGroup,
                         SmallMoleculeTransitionListColumnHeaders.namePrecursor,

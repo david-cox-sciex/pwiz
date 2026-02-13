@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Brian Pratt <bspratt .at. uw.edu >
  *
  * Copyright 2022 University of Washington - Seattle, WA
@@ -19,7 +19,6 @@
 using pwiz.Common.Chemistry;
 using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Model.DocSettings;
-using pwiz.Skyline.Model.Results;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.Util;
 using System;
@@ -40,6 +39,7 @@ using pwiz.Skyline.Model.RetentionTimes;
 using Enzyme = pwiz.Skyline.Model.DocSettings.Enzyme;
 using pwiz.Common.Collections;
 using System.Text.RegularExpressions;
+using pwiz.CommonMsData;
 
 namespace pwiz.Skyline.Model.DdaSearch
 {
@@ -95,7 +95,12 @@ namespace pwiz.Skyline.Model.DdaSearch
 
         public override string SearchEngineBlurb => DdaSearchResources.HardklorSearchEngine_SearchEngineBlurb;
 
-        public override event NotificationEventHandler SearchProgressChanged;
+        //public override event NotificationEventHandler SearchProgressChanged;
+        public override event NotificationEventHandler SearchProgressChanged
+        {
+            add { }
+            remove { }
+        }
 
         public override bool Run(CancellationTokenSource cancelToken, IProgressStatus status) // Single threaded version
         {
@@ -950,13 +955,13 @@ namespace pwiz.Skyline.Model.DdaSearch
                 $@"distribution_area	=	1	#Report sum of distribution peaks instead of highest peak only. 0=off, 1=on",
                 $@"xml					=	0	#Output results as XML. 0=off, 1=on #MAY NEED UI IN FUTURE",
                 $@"",
-                $@"isotope_data	=	""{isotopesFilename}""	# Using Skyline's isotope abundance values",
+                $@"isotope_data	=	""{PathEx.GetNonUnicodePath(isotopesFilename)}""	# Using Skyline's isotope abundance values",
                 $@"",
                 $@"# Below this point is where files to be analyzed should go. They should be listed contain ",
                 $@"# both the input file name, and the output file name. Each file to be analyzed should begin ",
                 $@"# on a new line. By convention Hardklor output should have this extension: .hk",
                 $@"",
-                $@"""{input}""	""{outputHardklorFile}"""
+                $@"""{PathEx.GetNonUnicodePath(input.GetFilePath())}""	""{PathEx.GetNonUnicodePath(outputHardklorFile)}"""
             );
             var hardklorConfigFile = GetHardklorConfigurationFilename(outputHardklorFile);
             File.WriteAllText(hardklorConfigFile, conf);

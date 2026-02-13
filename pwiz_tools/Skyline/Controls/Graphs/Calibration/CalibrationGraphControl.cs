@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
@@ -673,7 +673,7 @@ namespace pwiz.Skyline.Controls.Graphs.Calibration
         public event Action<CalibrationPoint> PointClicked;
         private void zedGraphControl_ContextMenuBuilder(ZedGraphControl sender, ContextMenuStrip menuStrip, Point mousePt, ZedGraphControl.ContextMenuObjectState objState)
         {
-            if (DisplaySettings == null)
+            if (DisplaySettings?.Document == null)
             {
                 return;
             }

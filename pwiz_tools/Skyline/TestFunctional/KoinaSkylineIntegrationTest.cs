@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Tobias Rohde <tobiasr .at. uw.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -18,10 +18,13 @@
  */
 
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Controls;
 using pwiz.Skyline.Controls.Graphs;
 using pwiz.Skyline.Controls.SeqNode;
@@ -205,7 +208,6 @@ namespace pwiz.SkylineTestFunctional
             var doc = SkylineWindow.Document;
 
             FileEx.SafeDelete(outBlib);
-            FileEx.SafeDelete(Path.ChangeExtension(outBlib, BiblioSpecLiteLibrary.EXT_CACHE));
 
             // Open Peptide Settings -- Library
             var peptideSettings = ShowDialog<PeptideSettingsUI>(SkylineWindow.ShowPeptideSettingsUI);
@@ -450,6 +452,36 @@ namespace pwiz.SkylineTestFunctional
 
         public void TestLiveKoinaMirrorPlots()
         {
+            var expectedPropertiesDict = new[]{
+                new Dictionary<string, object>
+                {
+                    { "LibraryName", "Rat (NIST) (Rat_plasma2) (Rat_plasma)" },
+                    { "PrecursorMz", 574.7844.ToString( CultureInfo.CurrentCulture) },
+                    { "Charge", "2" },
+                    { "Label", "light" },
+                    { "SpectrumCount", "93" },
+                    { "PeakCount","169"},
+                    { "MirrorPeakCount","25"},
+                    { "TotalIC", (1.0071E+5).ToString(@"0.0000E+0", CultureInfo.CurrentCulture)},
+                    { "MirrorTotalIC",(6.1699E+4).ToString(@"0.0000E+0", CultureInfo.CurrentCulture)},
+                    { "KoinaDotpMatch", string.Format(GraphsResources.GraphSpectrum_DoUpdate_dotp___0_0_0000_, 0.7402) },
+                    { "KoinaDotpMatchFull", string.Format(GraphsResources.GraphSpectrum_DoUpdate_dotp___0_0_0000_, 0.7396) }
+                },
+                new Dictionary<string, object> {
+                    {"LibraryName","Rat (NIST) (Rat_plasma2) (Rat_plasma)"},
+                    {"PrecursorMz",710.8752.ToString( CultureInfo.CurrentCulture)},
+                    {"Charge","2"},
+                    {"Label","light"},
+                    {"SpectrumCount","4"},
+                    {"PeakCount","118"},
+                    {"MirrorPeakCount","27"},
+                    {"TotalIC", (1.9350E+5).ToString(@"0.0000E+0", CultureInfo.CurrentCulture)},
+                    {"MirrorTotalIC", (5.3983E+4).ToString(@"0.0000E+0", CultureInfo.CurrentCulture)},
+                    {"KoinaDotpMatch",string.Format(GraphsResources.GraphSpectrum_DoUpdate_dotp___0_0_0000_, 0.7349)},
+                    {"KoinaDotpMatchFull",string.Format(GraphsResources.GraphSpectrum_DoUpdate_dotp___0_0_0000_, 0.6997)}
+                }
+            };
+
             var client = (FakeKoinaPredictionClient) KoinaPredictionClient.Current;
 
             // Enable mirror plots
@@ -472,6 +504,17 @@ namespace pwiz.SkylineTestFunctional
 
                 if (!RecordData)
                     AssertIntensityAndIRTSpectrumCorrect((KoinaIntensityModel.PeptidePrecursorNCE)selection, client.QueryIndex);
+
+                RunUI(() => { SkylineWindow.GraphSpectrum.ShowPropertiesSheet = true; });
+                var graphExtension = SkylineWindow.GraphSpectrum.MsGraphExtension;
+                WaitForConditionUI(() => graphExtension.PropertiesVisible);
+                var currentProperties = graphExtension.PropertiesSheet.SelectedObject as SpectrumProperties;
+                Assert.IsNotNull(currentProperties);
+                // if property values change use the statement below to generate a new set.
+                //Trace.Write(currentProperties.Serialize());
+                var expectedProperties = new SpectrumProperties();
+                expectedProperties.Deserialize(expectedPropertiesDict[i-1]);
+                Assert.IsTrue(expectedProperties.IsSameAs(currentProperties));
             }
         }
     }

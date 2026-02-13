@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Brendan MacLean <brendanx .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -23,6 +23,8 @@ using System.Linq;
 using System.Reflection;
 using Ionic.Zip;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using pwiz.Common.SystemUtil;
+using pwiz.CommonMsData;
 using pwiz.Skyline;
 using pwiz.Skyline.Util;
 
@@ -47,6 +49,12 @@ namespace pwiz.SkylineTestUtil
                 string.Compare(value.ToString(), "true", true, CultureInfo.InvariantCulture) == 0;
         }
 
+        public static long GetLongValue(this TestContext testContext, string property, long defaultValue)
+        {
+            var value = testContext.Properties[property];
+            return (value == null) ? defaultValue : Convert.ToInt64(value.ToString());
+        }
+
         public static TValue GetEnumValue<TValue>(this TestContext testContext, string property, TValue defaultValue)
         {
             var value = testContext.Properties[property];
@@ -59,7 +67,15 @@ namespace pwiz.SkylineTestUtil
         {
             // when run with VSTest/MSTest (when .runsettings file is used), use the CustomTestResultsDirectory property if available
             // because there's no other way to override the TestDir
-            return testContext.Properties["CustomTestResultsDirectory"]?.ToString() ?? testContext.TestDir;
+            var dir = testContext.Properties["CustomTestResultsDirectory"]?.ToString() ?? testContext.TestDir;
+            var decoration = testContext.Properties[@"UnicodeDecoration"]?.ToString(); // Helps check unicode handling N.B. "UnicodeDecoration" must agree with RunTests.cs
+            if (string.IsNullOrEmpty(decoration))
+            {
+                return dir;
+            }
+
+            // ReSharper disable once AssignNullToNotNullAttribute
+            return Path.Combine(dir, decoration);
         }
 
         public static string GetTestPath(this TestContext testContext, string relativePath)
@@ -137,7 +153,7 @@ namespace pwiz.SkylineTestUtil
             {
                 try
                 {
-                    Helpers.Try<Exception>(() =>
+                    TryHelper.Try<Exception>(() =>
                     {
                         using ZipFile zipFile = ZipFile.Read(pathZip);
                         foreach (ZipEntry zipEntry in zipFile)

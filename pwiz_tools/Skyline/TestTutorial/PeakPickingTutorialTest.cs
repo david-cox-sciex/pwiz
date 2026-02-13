@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Dario Amodei <damodei .at. stanford.edu>,
  *                  Mallick Lab, Department of Radiology, Stanford
  *
@@ -27,6 +27,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using pwiz.Common.DataBinding;
 using pwiz.Common.DataBinding.Controls.Editor;
 using pwiz.Common.SystemUtil;
+using pwiz.CommonMsData;
 using pwiz.Skyline.Controls;
 using pwiz.Skyline.Controls.Databinding;
 using pwiz.Skyline.Controls.Graphs;
@@ -34,8 +35,8 @@ using pwiz.Skyline.EditUI;
 using pwiz.Skyline.FileUI;
 using pwiz.Skyline.Model;
 using pwiz.Skyline.Model.DocSettings;
-using pwiz.Skyline.Model.Results;
 using pwiz.Skyline.Model.Results.Scoring;
+using pwiz.Skyline.Model.RetentionTimes;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.SettingsUI;
 using pwiz.Skyline.Util.Extensions;
@@ -123,6 +124,7 @@ namespace pwiz.SkylineTestTutorial
             OkDialog(generateDecoysDlg, generateDecoysDlg.OkDialog);
 
             RestoreViewOnScreen(3);
+            RunUI(() => SkylineWindow.ShowFilesTreeForm(false));
             RunUIForScreenShot(() =>
             {
                 SkylineWindow.SequenceTree.TopNode = SkylineWindow.SequenceTree.Nodes[11];
@@ -220,23 +222,14 @@ namespace pwiz.SkylineTestTutorial
             RunUI(() => editDlg.SelectedGraphTab = 1);
             RunUI(() => editDlg.PeakCalculatorsGrid.SelectRow(2));
             PauseForScreenShot<EditPeakScoringModelDlg.FeaturesTab>("Edit Peak Scoring Model form library dotp feature score");
-
             RunUI(() =>
             {
                 Assert.AreEqual(18, editDlg.PeakCalculatorsGrid.RowCount);
                 // The rows which the tutorial says are missing scores are in fact missing scores
-                foreach (int i in new[] { 2, 7, 8, 9, 10, 11, 13, 15 }) // MS1 scores are now missing, 19, 20, 21, 22
-                {
-                    Assert.IsFalse(editDlg.IsActiveCell(i, 0));
-                }
-                editDlg.IsFindButtonVisible = true;
+                AssertDisabledScores(editDlg, 2, 7, 8, 9, 10, 11, 13, 14, 15, 16, 17);
                 editDlg.FindMissingValues(2);   // Retention time
                 editDlg.PeakScoringModelName = "test1";
             });
-            RunUIForScreenShot(() => editDlg.ShowFindButton(true));
-            PauseForScreenShot(editDlg.GraphsControl, "Edit Peak Scoring Model form find missing scores", null, bmp =>
-                DrawLArrowCursorOnBitmap(bmp, 0.88, 0.7));
-            RunUIForScreenShot(() => editDlg.ShowFindButton(false));
 
             OkDialog(editDlg, editDlg.OkDialog);
             OkDialog(reintegrateDlg, reintegrateDlg.CancelDialog);
@@ -313,7 +306,7 @@ namespace pwiz.SkylineTestTutorial
                         Assert.IsFalse(editDlgLibrary.PeakCalculatorsGrid.Items[i].IsEnabled);
                         editDlgLibrary.PeakCalculatorsGrid.Items[i].IsEnabled = true;
                     }
-                    editDlgLibrary.TrainModel(true);
+                    editDlgLibrary.TrainModel();
                 });
             PauseForScreenShot<EditPeakScoringModelDlg.ModelTab>("Edit Peak Scoring Model form with library score");
 
@@ -340,7 +333,7 @@ namespace pwiz.SkylineTestTutorial
                     editDlgNew.UsesSecondBest = true;
                     editDlgNew.PeakCalculatorsGrid.Items[4].IsEnabled = false;
                     editDlgNew.PeakCalculatorsGrid.Items[2].IsEnabled = false;
-                    editDlgNew.TrainModel(true);
+                    editDlgNew.TrainModel();
                     // Check that these cells are still active even though they've been unchecked
                     Assert.IsTrue(editDlgNew.IsActiveCell(6, 0));
                 });
@@ -480,19 +473,8 @@ namespace pwiz.SkylineTestTutorial
                     {
                         Assert.AreEqual(editDlgFromSrm.PeakCalculatorsGrid.Items[j].PercentContribution, null);
                     }
-                    int i = 0;
-                    Assert.IsTrue(editDlgFromSrm.IsActiveCell(i++, 0));
-                    Assert.IsFalse(editDlgFromSrm.IsActiveCell(i++, 0));
-//                    Assert.IsFalse(editDlgFromSrm.IsActiveCell(i++, 0));
-                    Assert.IsFalse(editDlgFromSrm.IsActiveCell(i++, 0));
-                    Assert.IsTrue(editDlgFromSrm.IsActiveCell(i++, 0));
-                    Assert.IsTrue(editDlgFromSrm.IsActiveCell(i++, 0));
-                    Assert.IsTrue(editDlgFromSrm.IsActiveCell(i++, 0));
-                    Assert.IsTrue(editDlgFromSrm.IsActiveCell(i++, 0));
-                    Assert.IsFalse(editDlgFromSrm.IsActiveCell(i++, 0));
-                    Assert.IsFalse(editDlgFromSrm.IsActiveCell(i++, 0));
-                    Assert.IsFalse(editDlgFromSrm.IsActiveCell(i++, 0));
-                    Assert.IsFalse(editDlgFromSrm.IsActiveCell(i, 0));
+
+                    AssertDisabledScores(editDlgFromSrm, 1, 2, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17);
                 });
             
             OkDialog(editDlgFromSrm, editDlgFromSrm.CancelDialog);
@@ -515,7 +497,6 @@ namespace pwiz.SkylineTestTutorial
                 {
                     editDlgDia.SelectedGraphTab = 1;
                     editDlgDia.PeakCalculatorsGrid.SelectRow(2);
-                    editDlgDia.IsFindButtonVisible = true;
                     editDlgDia.FindMissingValues(2);    // Retention times
                     editDlgDia.PeakScoringModelName = "testDIA";
                 });
@@ -532,9 +513,19 @@ namespace pwiz.SkylineTestTutorial
             Assert.AreEqual(34, findResultsForm.ItemCount);
         }
 
+        private void AssertDisabledScores(EditPeakScoringModelDlg dlg, params int[] disabledScoreIndices)
+        {
+            var expected = string.Join(", ", disabledScoreIndices.OrderBy(i => i));
+            var actual = string.Join(", ",
+                Enumerable.Range(0, dlg.PeakCalculatorsGrid.RowCount)
+                    .Where(i => !dlg.PeakCalculatorsGrid.Items[i].IsEnabled));
+            Assert.AreEqual(expected, actual);
+        }
+
         private void ValidateCoefficients(EditPeakScoringModelDlg editDlgFromSrm, int coeffIndex)
         {
-            string coefficients = string.Join(@"|", GetCoefficientStrings(editDlgFromSrm));
+            string coefficients = string.Join(@"|", editDlgFromSrm.PeakCalculatorsGrid.Items
+                .Select(v => v.Weight?.ToString("F04", CultureInfo.InvariantCulture) ?? " null "));
             if (IsRecordMode)
                 Console.WriteLine(@"""{0}"",", coefficients);
             else

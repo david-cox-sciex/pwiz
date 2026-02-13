@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Brendan MacLean <brendanx .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -99,6 +99,35 @@ namespace pwiz.Skyline.Model.DocSettings
             }
 
             return Filter.Accept(sequence, precursorMz, type, cleavageOffset, ionMz, start, end, startMz);
+        }
+
+        public bool HasOptimizationLibrary
+        {
+            get
+            {
+                return Prediction != null && Prediction.OptimizedLibrary != null && !Prediction.OptimizedLibrary.IsNone;
+            }
+        }
+
+        public bool HasOptimizationLibraryPersisted
+        {
+            get
+            {
+                return HasOptimizationLibrary && Prediction.OptimizedLibrary.PersistencePath != null;
+            }
+        }
+
+        public bool HasDriftTimePrediction { get { return IonMobilityFiltering != null && IonMobilityFiltering.IonMobilityLibrary != null; } }
+
+        public bool HasIonMobilityLibraryPersisted
+        {
+            get
+            {
+                return HasDriftTimePrediction &&
+                       IonMobilityFiltering.IonMobilityLibrary != null &&
+                       !IonMobilityFiltering.IonMobilityLibrary.IsNone &&
+                       IonMobilityFiltering.IonMobilityLibrary.FilePath != null;
+            }
         }
 
         #region Property change methods
@@ -1686,7 +1715,20 @@ namespace pwiz.Skyline.Model.DocSettings
             // CONSIDER: Maybe we should be storing a ChromSource on the transition at the time it is created, which
             // seems to be the only time we really know that a precursor ion is being created for MS1 filtering
             // or not.
-            return nodeGroup.Transitions.Count(nodeTran => !nodeTran.IsMs1 || nodeTran.HasLibInfo) >= MinIonCount;
+            if (nodeGroup.Transitions.Count(nodeTran => !nodeTran.IsMs1 || nodeTran.HasLibInfo) >= MinIonCount)
+            {
+                return true;
+            }
+
+            // Special case with libraries that don't have fragment info, just precursors - so a minimum
+            // fragment count isn't applicable.
+            // (Only current scenario for this is the Hardklor-based feature finding.)
+            if (nodeGroup.LibraryMayBePrecursorsOnly && nodeGroup.Transitions.All(nodeTran => nodeTran.IsMs1))
+            {
+                return true;
+            }
+
+            return false;
         }
 
         #region Property change methods
@@ -1871,7 +1913,7 @@ namespace pwiz.Skyline.Model.DocSettings
         public const int MIN_MEASUREABLE_MZ = 10;
         public const int MIN_MZ_RANGE = 100;
         public const int MAX_MEASURABLE_MZ = 10000;
-        public const double MIN_MZ_MATCH_TOLERANCE = 0.0001;
+        public const double MIN_MZ_MATCH_TOLERANCE = 0.00005;
         public const double MAX_MZ_MATCH_TOLERANCE = 0.6;
         public const double DEFAULT_MZ_MATCH_TOLERANCE = 0.055;
         public const int MIN_TRANSITION_MAX_ORIGINAL = 50;
@@ -2363,6 +2405,9 @@ namespace pwiz.Skyline.Model.DocSettings
         [Track]
         public FullScanAcquisitionMethod AcquisitionMethod { get; private set; }
 
+        public bool IsAllIons => (Equals(AcquisitionMethod, FullScanAcquisitionMethod.DIA) && IsolationScheme.IsAllIons) ||
+                                 Equals(AcquisitionMethod, FullScanAcquisitionMethod.EI);
+
         [TrackChildren]
         public IsolationScheme IsolationScheme { get; private set; }
 
@@ -2532,6 +2577,11 @@ namespace pwiz.Skyline.Model.DocSettings
         public bool IsEnabledMsMs
         {
             get { return AcquisitionMethod != FullScanAcquisitionMethod.None; }
+        }
+
+        public bool IsEI
+        {
+            get { return AcquisitionMethod == FullScanAcquisitionMethod.EI; }
         }
 
         public bool IsCentroidedMsMs

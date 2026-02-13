@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Nicholas Shulman <nicksh .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -23,6 +23,7 @@ using System.ComponentModel;
 using System.Linq;
 using pwiz.Common.DataBinding;
 using pwiz.Common.DataBinding.Attributes;
+using pwiz.CommonMsData;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.DocSettings.AbsoluteQuantification;
 using pwiz.Skyline.Model.ElementLocators;
@@ -140,7 +141,6 @@ namespace pwiz.Skyline.Model.Databinding.Entities
             }
         }
 
-        [DataGridViewColumnType(typeof(SampleTypeDataGridViewColumn))]
         [Importable(Formatter = typeof(SampleType.PropertyFormatter))]
         public SampleType SampleType
         {

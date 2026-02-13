@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Alana Killeen <killea .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -23,6 +23,7 @@ using pwiz.Skyline.Model.DocSettings.Extensions;
 using pwiz.Skyline.Model.Lib;
 using pwiz.Skyline.Util;
 using System.Linq;
+using pwiz.Common.Collections;
 
 namespace pwiz.Skyline.Model
 {
@@ -35,11 +36,13 @@ namespace pwiz.Skyline.Model
         public PeptideModifications MatcherPepMods { get; set; }
 
         public void CreateMatches(SrmSettings settings, IEnumerable<LibKey> libKeys,
-            MappedList<string, StaticMod> defSetStatic, MappedList<string, StaticMod> defSetHeavy)
+            MappedList<string, StaticMod> defSetStatic, MappedList<string, StaticMod> defSetHeavy,
+            string libraryName)
         {
             _dictAAMassPairs = new Dictionary<AATermKey, List<string>>();
             _libKeys = libKeys.GetEnumerator();
-            InitMatcherSettings(settings, defSetStatic, defSetHeavy);
+            LibraryName = libraryName;
+            InitMatcherSettings(settings, defSetStatic, defSetHeavy, libraryName);
             MatcherPepMods = CreateMatcherPeptideSettings(settings);
         }
 
@@ -624,7 +627,7 @@ namespace pwiz.Skyline.Model
             }
         }
 
-        private struct AATermKey
+        private struct AATermKey : IEquatable<AATermKey>
         {
             public AATermKey(char? aa, ModTerminus? terminus)
             {
@@ -637,10 +640,9 @@ namespace pwiz.Skyline.Model
 
             #region object overrides
 
-            private bool Equals(AATermKey other)
+            public bool Equals(AATermKey other)
             {
-                return other._aa.Equals(_aa) &&
-                    other._terminus.Equals(_terminus);
+                return other._aa.Equals(_aa) && other._terminus.Equals(_terminus);
             }
 
             public override bool Equals(object obj)

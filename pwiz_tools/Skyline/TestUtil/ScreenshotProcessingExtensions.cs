@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Brendan MacLean <brendanx .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -51,6 +51,11 @@ namespace pwiz.SkylineTestUtil
 
         public static int CornerForm => IsWindows11() ? CORNER_FORM_WINDOWS11 : 0;
         public static int CornerToolWindow => IsWindows11() ? CORNER_TOOL_WINDOW_WINDOWS11 : 0;
+
+        public static Rectangle GetToolWindowBorderRect(Rectangle rectWindow)
+        {
+            return IsWindows11() ? rectWindow : new Rectangle(rectWindow.Location, new Size(rectWindow.Width, 1));
+        }
 
         public static Bitmap CleanupBorder(this Bitmap bmp, bool toolWindow = false)
         {
@@ -471,11 +476,10 @@ namespace pwiz.SkylineTestUtil
             return bmp;
         }
 
-        public static void DrawBoxOnColumn(this Graphics g, DocumentGridForm documentGridForm, int column, int rows, Color? color = null, int lineWidth = 3)
+        public static void DrawBoxOnColumn(this Graphics g, DocumentGridForm documentGridForm, int column, double rows, Color? color = null, int lineWidth = 3)
         {
-            var rect = documentGridForm.DataGridView.GetCellDisplayRectangle(column, 0, true); // column's top data cell
-            rect.Y += GetGridViewYOffset(documentGridForm);
-            rect.Height *= rows; // draw rectangle around all rows
+            var rect = GetBitmapCellRectangle(documentGridForm, 0, column); // column's top data cell
+            rect.Height = (int)(rect.Height * rows); // draw rectangle around all rows
             g.DrawRectangle(new Pen(color ?? ANNOTATION_COLOR, lineWidth), rect);
         }
 
@@ -485,16 +489,33 @@ namespace pwiz.SkylineTestUtil
             var text = dataGridView.Rows[row].Cells[column].FormattedValue?.ToString();
             var stringSize = g.MeasureString(text, dataGridView.Font);
 
-            var rect = dataGridView.GetCellDisplayRectangle(column, row, true);
-            rect.Y += GetGridViewYOffset(documentGridForm);
+            var rect = GetBitmapCellRectangle(documentGridForm, row, column); // column's top data cell
+
             rect.Width = Convert.ToInt16(stringSize.Width * 1.1); // scale-up ellipse size so shape isn't too tight around text
 
             g.DrawEllipse(new Pen(color ?? ANNOTATION_COLOR, lineWidth), rect);
         }
-        private static int GetGridViewYOffset(DocumentGridForm documentGridForm)
+
+        private static Rectangle GetBitmapCellRectangle(DocumentGridForm documentGridForm, int row, int column)
         {
-            // compute top-left corner of data grid's cells, 4px offset puts shapes in the correct place
-            return documentGridForm.NavBar.Height + documentGridForm.DataGridView.ColumnHeadersHeight - 4;
+            var rectBitmap = ScreenshotManager.GetFramedWindowBounds(documentGridForm);
+            var rect = documentGridForm.DataGridView.GetCellDisplayRectangle(column, row, true); // column's top data cell
+            rect = documentGridForm.DataGridView.RectangleToScreen(rect);
+            rect.X -= rectBitmap.X;
+            rect.Y -= rectBitmap.Y;
+            return rect;
+        }
+
+        /// <summary>
+        /// Draws the state of multiple ProgressBars to cover up
+        /// any animation that Windows may have drawn on the completed progress
+        /// </summary>
+        public static Bitmap FillProgressBars(this Bitmap bmp, IEnumerable<ProgressBar> progressBars)
+        {
+            var result = bmp;
+            foreach (var progressBar in progressBars)
+                result = result.FillProgressBar(progressBar);
+            return result;
         }
 
         /// <summary>

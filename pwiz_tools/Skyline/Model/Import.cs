@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Brendan MacLean <brendanx .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -630,10 +630,18 @@ namespace pwiz.Skyline.Model
             for (var index = 0; index < lines.Count; index++)
             {
                 string row = lines[index];
-                var errorInfo = RowReader.NextRow(row, ++_linesSeen);
-                if (errorInfo != null)
+                try
                 {
-                    errorList.Add(errorInfo);
+                    var errorInfo = RowReader.NextRow(row, ++_linesSeen);
+                    if (errorInfo != null)
+                    {
+                        errorList.Add(errorInfo);
+                        continue;
+                    }
+                }
+                catch (Exception exception)
+                {
+                    errorList.Add(new TransitionImportErrorInfo(exception.Message, null, _linesSeen, row));
                     continue;
                 }
 
@@ -836,7 +844,7 @@ namespace pwiz.Skyline.Model
             {
                 seqBuilder.AppendTransition(info, irt, explicitRT, libraryIntensity, productMz, note, lineText, lineNum);
             }
-            catch (InvalidDataException x)
+            catch (Exception x) when (!ExceptionUtil.IsProgrammingDefect(x))
             {
                 throw new LineColNumberedIoException(x.Message, lineNum, -1, x);
             }

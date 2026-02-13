@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Nicholas Shulman <nicksh .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -16,9 +16,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-using pwiz.Skyline.Util;
 using System;
 using System.Runtime.CompilerServices;
+using pwiz.Common.SystemUtil;
 using ZedGraph;
 
 namespace pwiz.Skyline.Controls.Clustering

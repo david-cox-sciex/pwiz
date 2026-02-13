@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Matt Chambers <matt.chambers .@. vanderbilt.edu>
  *
  * Copyright 2009 Vanderbilt University - Nashville, TN 37232
@@ -17,11 +17,9 @@
  */
 using System.Collections.Generic;
 using System.Windows.Forms;
-using System.IO;
+using pwiz.CommonMsData;
 using pwiz.Skyline.Alerts;
-using pwiz.Skyline.Model.Results;
-using pwiz.Skyline.Model.Results.RemoteApi;
-using pwiz.Skyline.Util;
+using pwiz.CommonMsData.RemoteApi;
 
 
 namespace pwiz.Skyline.FileUI
@@ -37,7 +35,6 @@ namespace pwiz.Skyline.FileUI
         public OpenFileDialogNE(string[] sourceTypes, IList<RemoteAccount> remoteAccounts, IList<string> specificDataSourceFilter = null)
             : base(sourceTypes, remoteAccounts, specificDataSourceFilter )
         {
-            actionButton.Text = FileUIResources.OpenFileDialogNE_OpenFileDialogNE_Open;
         }
 
         protected override void DoMainAction()
@@ -47,10 +44,10 @@ namespace pwiz.Skyline.FileUI
 
         public void Open()
         {
-            List<MsDataFileUri> dataSourceList = new List<MsDataFileUri>();
+            var dataSourceList = new List<MsDataFileUri>();
             foreach (ListViewItem item in listView.SelectedItems)
             {
-                if (!DataSourceUtil.IsFolderType(item.SubItems[1].Text))
+                if (!TreatAsFolder(item.SubItems[1].Text))
                 {
                     dataSourceList.Add(((SourceInfo)item.Tag).MsDataFileUri);
                 }
@@ -67,7 +64,7 @@ namespace pwiz.Skyline.FileUI
             // should navigate to
             foreach (ListViewItem item in listView.SelectedItems)
             {
-                if (DataSourceUtil.IsFolderType(item.SubItems[1].Text))
+                if (TreatAsFolder(item.SubItems[1].Text))
                 {
                     OpenFolderItem(item);
                     return;
@@ -77,36 +74,9 @@ namespace pwiz.Skyline.FileUI
             try
             {
                 // perhaps the user has typed an entire filename into the text box - or just garbage
-                var fileOrDirName = sourcePathTextBox.Text;
-                bool exists;
-                bool triedAddingDirectory = false;
-                while (!(exists = ((File.Exists(fileOrDirName) || Directory.Exists(fileOrDirName)))))
-                {
-                    if (triedAddingDirectory)
-                        break;
-                    MsDataFilePath currentDirectoryPath = CurrentDirectory as MsDataFilePath;
-                    if (null == currentDirectoryPath)
-                    {
-                        break;
-                    }
-                    fileOrDirName = Path.Combine(currentDirectoryPath.FilePath, fileOrDirName);
-                    triedAddingDirectory = true;
-                }
-
-                if (exists)
-                {
-                    if (DataSourceUtil.IsDataSource(fileOrDirName))
-                    {
-                        FileNames = new[] { MsDataFileUri.Parse(fileOrDirName) };
-                        DialogResult = DialogResult.OK;
-                        return;
-                    }
-                    else if (Directory.Exists(fileOrDirName))
-                    {
-                        OpenFolder(new MsDataFilePath(fileOrDirName));
-                        return;
-                    }
-                }
+                if (OpenFolderFromTextBox())
+                    return;
+                // TODO: Make sure it can open the file from the text box remotely
             }
             // ReSharper disable once EmptyGeneralCatchClause
             catch { } // guard against user typed-in-garbage

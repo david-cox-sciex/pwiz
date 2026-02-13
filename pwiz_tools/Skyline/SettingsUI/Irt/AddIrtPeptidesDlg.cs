@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Brendan MacLean <brendanx .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -285,6 +285,11 @@ namespace pwiz.Skyline.SettingsUI.Irt
         public DataGridViewRow GetRow(int rowIndex)
         {
             return 0 <= rowIndex && rowIndex < dataGridView.RowCount ? dataGridView.Rows[rowIndex] : null;
+        }
+
+        public IIrtRegression GetRegressionRefined(int rowIndex)
+        {
+            return (GetRow(rowIndex).Tag as RetentionTimeProviderData)?.RegressionRefined;
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Brendan MacLean <brendanx .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -21,7 +21,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Net;
+using System.Net; // HttpStatusCode
 using System.Reflection;
 using System.Text;
 using System.Windows.Forms;
@@ -32,6 +32,9 @@ using Newtonsoft.Json.Linq;
 using pwiz.PanoramaClient;
 using pwiz.Common.DataBinding;
 using pwiz.Common.SystemUtil;
+using pwiz.CommonMsData;
+using pwiz.CommonMsData.RemoteApi;
+using pwiz.CommonMsData.RemoteApi.Ardia;
 using pwiz.ProteomeDatabase.API;
 using pwiz.Skyline.Alerts;
 using pwiz.Skyline.Controls;
@@ -78,6 +81,9 @@ namespace pwiz.Skyline
             ToolStripMenuItem menu = fileToolStripMenuItem;
             List<string> mruList = Settings.Default.MruList;
             string curDir = Settings.Default.ActiveDirectory;
+
+            // If an ArdiaAccount is registered, include an "Upload to..." menu item
+            ardiaPublishMenuItem.Visible = HasRegisteredArdiaAccount;
 
             int start = menu.DropDownItems.IndexOf(mruBeforeToolStripSeparator) + 1;
             while (!ReferenceEquals(menu.DropDownItems[start], mruAfterToolStripSeparator))
@@ -821,7 +827,7 @@ namespace pwiz.Skyline
                 }
                 catch (Exception e)
                 {
-                    MessageDlg.ShowException(this, e);
+                    MessageDlg.ShowException(parent ?? this, e);
                 }
             }
             else if (!File.Exists(pathCache) &&
@@ -936,73 +942,82 @@ namespace pwiz.Skyline
             {
                 using var dlg = new PanoramaFilePicker(panoramaServers, state);
                 dlg.Text = SkylineResources.SkylineWindow_OpenFromPanorama_Open_From_Panorama;
-                var longOptionRunner = new LongOperationRunner
+                
+                using (var waitDlg = new LongWaitDlg())
                 {
-                    ParentControl = this,
-                    JobTitle = SkylineResources.SkylineWindow_OpenFromPanorama_Loading_remote_server_folders,
-                };
-                // TODO: This needs to be possible to cancel
-                longOptionRunner.Run(broker => dlg.InitializeDialog());
+                    waitDlg.Text = SkylineResources.SkylineWindow_OpenFromPanorama_Loading_remote_server_folders;
+                    var status = waitDlg.PerformWork(this, 800, progressMonitor =>
+                    {
+                        // Set initial message with indeterminate progress (marquee/busy-wait) before downloading folder JSON
+                        progressMonitor.UpdateProgress(new ProgressStatus(PanoramaClient.Properties.Resources.PanoramaFolderBrowser_InitializeServers_Requesting_remote_server_folders).ChangePercentComplete(-1));
+                        // Fetch data on background thread (control already created on UI thread)
+                        dlg.LoadServerData(progressMonitor);
+                    });
+                    
+                    if (status.IsCanceled)
+                        return; // User canceled - don't show dialog
+                }
 
-                if (dlg.ShowDialog(this) != DialogResult.Cancel)
+                if (dlg.ShowDialog(this) == DialogResult.Cancel)
+                    return;
+
+                Settings.Default.PanoramaTreeState = dlg.FolderBrowser.TreeState;
+                var folderPath = string.Empty;
+                if (!string.IsNullOrEmpty(Settings.Default.PanoramaLocalSavePath))
                 {
-                    Settings.Default.PanoramaTreeState = dlg.FolderBrowser.TreeState;
-                    var folderPath = string.Empty;
-                    if (!string.IsNullOrEmpty(Settings.Default.PanoramaLocalSavePath))
-                    {
-                        folderPath = Settings.Default.PanoramaLocalSavePath;
-                    }
-                    var curServer = dlg.FolderBrowser.GetActiveServer();
+                    folderPath = Settings.Default.PanoramaLocalSavePath;
+                }
+                var curServer = dlg.FolderBrowser.GetActiveServer();
 
-                    var downloadPath = string.Empty;
-                    var extension = dlg.FileName.EndsWith(SrmDocumentSharing.EXT) ? SrmDocumentSharing.EXT : SrmDocument.EXT;
-                    if (downloadFilePath == null)
+                var downloadPath = string.Empty;
+                var extension = dlg.FileName.EndsWith(SrmDocumentSharing.EXT) ? SrmDocumentSharing.EXT : SrmDocument.EXT;
+                if (downloadFilePath == null)
+                {
+                    using (var saveAsDlg = new SaveFileDialog())
                     {
-                        using (var saveAsDlg = new SaveFileDialog())
+                        saveAsDlg.FileName = dlg.FileName;
+                        saveAsDlg.DefaultExt = extension;
+                        saveAsDlg.SupportMultiDottedExtensions = true;
+                        saveAsDlg.Filter = TextUtil.FileDialogFiltersAll(SrmDocument.FILTER_DOC_AND_SKY_ZIP, SrmDocumentSharing.FILTER_SHARING, SkypFile.FILTER_SKYP);
+                        saveAsDlg.InitialDirectory = folderPath;
+                        saveAsDlg.OverwritePrompt = true;
+                        if (saveAsDlg.ShowDialog(this) != DialogResult.OK)
                         {
-                            saveAsDlg.FileName = dlg.FileName;
-                            saveAsDlg.DefaultExt = extension;
-                            saveAsDlg.SupportMultiDottedExtensions = true;
-                            saveAsDlg.Filter = TextUtil.FileDialogFiltersAll(SrmDocument.FILTER_DOC_AND_SKY_ZIP, SrmDocumentSharing.FILTER_SHARING, SkypFile.FILTER_SKYP);
-                            saveAsDlg.InitialDirectory = folderPath;
-                            saveAsDlg.OverwritePrompt = true;
-                            if (saveAsDlg.ShowDialog(this) != DialogResult.OK)
-                            {
-                                return;
-                            }
-
-                            Settings.Default.PanoramaLocalSavePath = Path.GetDirectoryName(saveAsDlg.FileName);
-                            var folder = Path.GetDirectoryName(saveAsDlg.FileName);
-                            if (!string.IsNullOrEmpty(folder))
-                            {
-                                downloadPath = saveAsDlg.FileName;
-                            }
+                            return;
                         }
-                    }
-                    else
-                    {
-                        downloadPath = downloadFilePath;
-                    }
 
-                    if (!string.IsNullOrEmpty(downloadPath))
-                    {
-                        var size = dlg.FileSize;
-                        var success = DownloadPanoramaFile(downloadPath, dlg.FileName, dlg.FileUrl, curServer, size);
-                        if (dlg.FileName.EndsWith(SrmDocumentSharing.EXT) && success)
+                        Settings.Default.PanoramaLocalSavePath = Path.GetDirectoryName(saveAsDlg.FileName);
+                        var folder = Path.GetDirectoryName(saveAsDlg.FileName);
+                        if (!string.IsNullOrEmpty(folder))
                         {
-                            OpenSharedFile(downloadPath);
-                        }
-                        else if (dlg.FileName.EndsWith(SrmDocument.EXT) && success)
-                        {
-                            OpenFile(downloadPath);
+                            downloadPath = saveAsDlg.FileName;
                         }
                     }
                 }
+                else
+                {
+                    downloadPath = downloadFilePath;
+                }
+
+                if (!string.IsNullOrEmpty(downloadPath))
+                {
+                    var size = dlg.FileSize;
+                    var success = DownloadPanoramaFile(downloadPath, dlg.FileName, dlg.FileUrl, curServer, size);
+                    if (dlg.FileName.EndsWith(SrmDocumentSharing.EXT) && success)
+                    {
+                        OpenSharedFile(downloadPath);
+                    }
+                    else if (dlg.FileName.EndsWith(SrmDocument.EXT) && success)
+                    {
+                        OpenFile(downloadPath);
+                    }
+                }
+
                 Settings.Default.PanoramaTreeState = dlg.FolderBrowser.TreeState;
             }
             catch (Exception e)
             {
-                MessageDlg.ShowException(this, e);
+                ExceptionUtil.DisplayOrReportException(this, e);
             }
         }
 
@@ -1013,45 +1028,39 @@ namespace pwiz.Skyline
             {
                 panoramaClient ??= new WebPanoramaClient(curServer.URI, curServer.Username, curServer.Password);
                 using (var fileSaver = new FileSaver(downloadPath))
+                using (var longWaitDlg = new LongWaitDlg())
                 {
-                    using (var longWaitDlg = new LongWaitDlg())
-                    {
-                        longWaitDlg.Text = string.Format(SkylineResources.SkylineWindow_OpenFromPanorama_Downloading_file__0_, fileName);
-                        var progressStatus = longWaitDlg.PerformWork(this, 800,
-                            progressMonitor => panoramaClient.DownloadFile(fileUrl, fileSaver.SafeName, size, fileName,
-                                progressMonitor, new ProgressStatus()));
+                    longWaitDlg.Text = string.Format(SkylineResources.SkylineWindow_OpenFromPanorama_Downloading_file__0_, fileName);
+                    var progressStatus = longWaitDlg.PerformWork(this, 800,
+                        progressMonitor => panoramaClient.DownloadFile(fileUrl, fileSaver.SafeName, size, fileName,
+                            progressMonitor, new ProgressStatus()));
 
-                        if (progressStatus.IsCanceled || progressStatus.IsError)
-                        {
-                            FileEx.SafeDelete(downloadPath, true);
-                            if (progressStatus.IsError)
-                            {
-                                var message = progressStatus.ErrorException.Message;
-                                if (message.Contains(@"404"))
-                                {
-                                    message = Resources.SkylineWindow_DownloadPanoramaFile_File_does_not_exist__It_may_have_been_deleted_on_the_server_;
-                                }
-                                MessageDlg.ShowWithException(this, message, progressStatus.ErrorException);
-                                return false;
-                            }
-                            return false;
+                    // Check for user cancellation (exceptions are handled in catch block)
+                    if (progressStatus.IsCanceled)
+                        return false;
 
-                        }
-                        else
-                        {
-                            fileSaver.Commit();
-                        }
-                        if (longWaitDlg.IsCanceled)
-                            return false;
-                    }
-
+                    fileSaver.Commit();
                 }
 
                 return true;
             }
             catch (Exception e)
             {
-                MessageDlg.ShowException(this, e);
+                if (ExceptionUtil.IsProgrammingDefect(e))
+                    throw;
+                
+                // Check for 404 Not Found - show user-friendly message
+                var statusCode = NetworkRequestException.GetHttpStatusCode(e);
+                if (statusCode == HttpStatusCode.NotFound)
+                {
+                    MessageDlg.ShowWithException(this,
+                        Resources.SkylineWindow_DownloadPanoramaFile_File_does_not_exist__It_may_have_been_deleted_on_the_server_,
+                        e);
+                }
+                else
+                {
+                    MessageDlg.ShowException(this, e);
+                }
                 return false;
             }
         }
@@ -1105,12 +1114,16 @@ namespace pwiz.Skyline
 
             using (var dlg = new SaveFileDialog())
             {
+                var isSaveAs = false;
+
                 dlg.InitialDirectory = Settings.Default.ActiveDirectory;
                 dlg.OverwritePrompt = true;
                 dlg.DefaultExt = SrmDocument.EXT;
                 dlg.Filter = TextUtil.FileDialogFiltersAll(SrmDocument.FILTER_DOC);
                 if (!string.IsNullOrEmpty(DocumentFilePath))
                     dlg.FileName = Path.GetFileName(DocumentFilePath);
+                else
+                    isSaveAs = true;
 
                 if (dlg.ShowDialog(this) == DialogResult.OK)
                 {
@@ -1124,14 +1137,22 @@ namespace pwiz.Skyline
                         MessageDlg.ShowWithException(this, e.Message, e);
                         return false;
                     }
-                    if (SaveDocument(fileName))
+                    if (SaveDocument(fileName, isSaveAs:isSaveAs))
                         return true;
                 }
             }
             return false;
         }
 
-        public bool SaveDocument(String fileName, bool includingCacheFile = true)
+        /// <summary>
+        /// Saves the .sky file.
+        /// </summary>
+        /// <param name="fileName">File name to save the .sky file to. If this is different from the current path, the document will be assigned a new GUID</param>
+        /// <param name="includingCacheFile">Whether to also update the .skyd file by copying to a new path and/or removing <see cref="ChromCachedFile"/> entries which are no longer part of the document.
+        /// When saving immediately before a ReScore the .skyd file should not be changed because a new one is about to be created.</param>
+        /// <param name="isSaveAs">Flag indicating whether this saves the document to a new file name.</param>
+        /// <returns></returns>
+        public bool SaveDocument(String fileName, bool includingCacheFile = true, bool isSaveAs = false)
         {
             if (string.IsNullOrEmpty(DocumentUI.Settings.DataSettings.DocumentGuid) ||
                 !Equals(DocumentFilePath, fileName))
@@ -1143,6 +1164,8 @@ namespace pwiz.Skyline
                     docOriginal = Document;
                     docNew = docOriginal.ChangeDocumentGuid();
                 } while (!SetDocument(docNew, docOriginal));
+
+                isSaveAs = true;
             }
 
             SrmDocument document = Document;
@@ -1198,7 +1221,6 @@ namespace pwiz.Skyline
             {
                 SaveLayout(fileName);
 
-                // CONSIDER: Is this really optional?
                 if (includingCacheFile)
                 {
                     using (var longWaitDlg = new LongWaitDlg(this))
@@ -1218,6 +1240,14 @@ namespace pwiz.Skyline
             catch (IOException) {}
             catch (OperationCanceledException) {}
             catch (TargetInvocationException) {}
+
+            // CONSIDER: it might be possible to remove the DocumentSaved event by moving DocumentFilePath into SrmSettings.
+            //           DocumentSaved lets subscribers know about a new DocumentFilePath. Example: FilesTree uses this event 
+            //           to start watching the file system. DocumentChange is not a viable alternative because it fires before
+            //           the new path is set. We might be able to remove this event if path becomes an SrmSettings property
+            //           so path changes simply are another document change. Changing this means tackling the hash code
+            //           dance between setting a new guid on the .sky / .skyl files, writing files to disk, and firing events.
+            DocumentSavedEvent?.Invoke(this, new DocumentSavedEventArgs(DocumentFilePath, isSaveAs));
 
             return true;
         }
@@ -1292,8 +1322,7 @@ namespace pwiz.Skyline
                 do
                 {
                     docOriginal = Document;
-                    docNew = docOriginal.ChangeSettingsNoDiff(docOriginal.Settings.ChangePeptideLibraries(libraries =>
-                        libraries.ChangeDocumentLibraryPath(newDocFilePath)));                        
+                    docNew = docOriginal.ChangeSettingsNoDiff(docOriginal.Settings.ChangeDocumentLibraryPath(newDocFilePath));                        
                 }
                 while (!SetDocument(docNew, docOriginal));
             }
@@ -1305,7 +1334,7 @@ namespace pwiz.Skyline
             {
                 if (saverUser.CanSave())
                 {
-                    dockPanel.SaveAsXml(saverUser.SafeName, Encoding.UTF8);
+                    dockPanel.SaveAsXml(saverUser.SafeName, new UTF8Encoding(false)); // UTF-8 without BOM
                     saverUser.Commit();
                 }
             }
@@ -1410,7 +1439,7 @@ namespace pwiz.Skyline
             return !Dirty && null != DocumentFilePath ? SavedDocumentFormat : (DocumentFormat?) null;
         }
 
-        public bool ShareDocument(string fileDest, ShareType shareType)
+        public bool ShareDocument(string fileDest, ShareType shareType, bool useFileSaver = true, int zipFileMaxSegmentSize = 0)
         {
             try
             {
@@ -1418,7 +1447,7 @@ namespace pwiz.Skyline
                 using (var longWaitDlg = new LongWaitDlg())
                 {
                     longWaitDlg.Text = SkylineResources.SkylineWindow_ShareDocument_Compressing_Files;
-                    var sharing = new SrmDocumentSharing(DocumentUI, DocumentFilePath, fileDest, shareType);
+                    var sharing = new SrmDocumentSharing(DocumentUI, DocumentFilePath, fileDest, shareType, useFileSaver, zipFileMaxSegmentSize);
                     if (shareType.MustSaveNewDocument)
                     {
                         var tempDocumentPath = Path.Combine(sharing.EnsureTempDir().DirPath,
@@ -1435,8 +1464,8 @@ namespace pwiz.Skyline
                         }
                     }
 
-                    longWaitDlg.PerformWork(this, 1000, sharing.Share);
-                    success = !longWaitDlg.IsCanceled;
+                    var status = longWaitDlg.PerformWork(this, 1000, sharing.Share);
+                    success = !status.IsCanceled;
                 }
                 return success;
             }
@@ -1872,7 +1901,7 @@ namespace pwiz.Skyline
                 string extraInfo = null;
                 if (importInfo.File)
                 {
-                    info = new MessageInfo(MessageType.imported_fasta, docPair.NewDocumentType, importInfo.Text);
+                    info = new MessageInfo(MessageType.imported_fasta, docPair.NewDocumentType, AuditLogPath.Create(importInfo.Text));
                 }
                 else
                 {
@@ -2398,7 +2427,7 @@ namespace pwiz.Skyline
                     }
                 }
                 var dbPath = calcIrt.DatabasePath;
-                db = File.Exists(dbPath) ? IrtDb.GetIrtDb(dbPath, null) : IrtDb.CreateIrtDb(dbPath);
+                db = File.Exists(dbPath) ? IrtDb.GetIrtDb(dbPath) : IrtDb.CreateIrtDb(dbPath);
             }
             else
             {
@@ -3296,9 +3325,6 @@ namespace pwiz.Skyline
                             string redundantDocLibPath = BiblioSpecLiteSpec.GetRedundantName(docLibPath);
                             FileEx.SafeDelete(redundantDocLibPath);
 
-                            string docLibCachePath = BiblioSpecLiteLibrary.GetLibraryCachePath(docLibPath);
-                            FileEx.SafeDelete(docLibCachePath);
-
                             string midasLibPath = MidasLibSpec.GetLibraryFileName(DocumentFilePath);
                             FileEx.SafeDelete(midasLibPath);
                         }
@@ -3497,6 +3523,80 @@ namespace pwiz.Skyline
             return true;
         }
 
+        public bool HasRegisteredArdiaAccount =>
+            Settings.Default.RemoteAccountList.Any(account => account.AccountType == RemoteAccountType.ARDIA);
+
+        private void ardiaPublishMenuItem_Click(object sender, EventArgs e)
+        {
+            PublishToArdia();
+        }
+
+        // BUG: Removing RemoteAccounts using EditRemoteAccountsDlg may unexpectedly leave registered Ardia accounts intact?
+        // CONSIDER: revisit testing credentials for an Ardia account and prompting for login if needed
+        public void PublishToArdia()
+        {
+            Assume.IsTrue(HasRegisteredArdiaAccount, @"Expected to find a registered Ardia account but found none");
+
+            // Document must be fully loaded before it can be published
+            if (!DocumentUI.IsLoaded)
+            {
+                MessageDlg.Show(this, SkylineResources.SkylineWindow_ShowPublishDlg_The_document_must_be_fully_loaded_before_it_can_be_uploaded_);
+                return;
+            }
+
+            // Document must be saved before it can be published
+            if (string.IsNullOrEmpty(DocumentFilePath))
+            {
+                if (MultiButtonMsgDlg.Show(this, SkylineResources.SkylineWindow_ShowPublishDlg_The_document_must_be_saved_before_it_can_be_uploaded_,
+                        MessageBoxButtons.OKCancel) == DialogResult.Cancel)
+                    return;
+
+                if (!SaveDocumentAs())
+                    return;
+            }
+
+            try
+            {
+                var ardiaAccount = Settings.Default.RemoteAccountList.GetAccountsOfType(RemoteAccountType.ARDIA).Cast<ArdiaAccount>().ToList()[0];
+                var documentFormat = GetFileFormatOnDisk();
+
+                using var publishDlg = new PublishDocumentDlgArdia(this, ardiaAccount, DocumentFilePath, documentFormat);
+                if (publishDlg.ShowDialog(this) == DialogResult.Cancel)
+                {
+                    return;
+                }
+
+                var cacheVersion = SkylineVersion.SupportedForSharing().FirstOrDefault();
+                using var shareTypeDlg = new ShareTypeDlg(Document, DocumentFilePath, GetFileFormatOnDisk(), cacheVersion);
+                if (shareTypeDlg.ShowDialog(this) == DialogResult.Cancel)
+                {
+                    return;
+                }
+
+                var archiveFileName = publishDlg.FileName;
+
+                // CONSIDER: move TemporaryDirectory to CommonMsData so it's available to SrmDocumentArchive
+                // TemporaryDirectory automatically cleans up .zip files uploaded to Ardia
+                using var archiveFileDir = new TemporaryDirectory(null, Path.GetFileNameWithoutExtension(archiveFileName));
+
+                var srmDocumentArchive = SrmDocumentArchive.Create(archiveFileDir.DirPath, archiveFileName);
+
+                var shareType = shareTypeDlg.ShareType;
+                if (ShareDocument(srmDocumentArchive.ArchiveFilePath, shareType, false, publishDlg.MaxPartSize))
+                {
+                    // NB: this must be called *after* ShareDocument so the archive has been created and 1 or more
+                    //     parts are available locally
+                    srmDocumentArchive.Init();
+                    
+                    publishDlg.Upload(this, srmDocumentArchive);
+                }
+            }
+            catch (Exception e)
+            {
+                ExceptionUtil.DisplayOrReportException(this, e);
+            }
+        }
+
         private void publishMenuItem_Click(object sender, EventArgs e)
         {
             ShowPublishDlg(null);
@@ -3625,22 +3725,34 @@ namespace pwiz.Skyline
                 }
             }
 
-            var panoramaSavedUri = document.Settings.DataSettings.PanoramaPublishUri;
-            var showPublishDocDlg = true;
-
             // if the document has a saved uri prompt user for action, check servers, and permissions, then publish
-            // if something fails in the attempt to publish to the saved uri will bring up the usual PublishDocumentDlg
+            // if something fails in the attempt to publish to the saved uri will bring up the usual PublishDocumentDlgBase
+            var panoramaSavedUri = document.Settings.DataSettings.PanoramaPublishUri;
+            var publishToSaveUri = DialogResult.No; // Default to asking the user where to upload
             if (panoramaSavedUri != null && !string.IsNullOrEmpty(panoramaSavedUri.ToString()))
             {
-                showPublishDocDlg = !PublishToSavedUri(publishClient, panoramaSavedUri, fileName, servers);
+                try
+                {
+                    publishToSaveUri = PublishToSavedUri(publishClient, panoramaSavedUri, fileName, servers);
+                }
+                catch (Exception e)
+                {
+                    ExceptionUtil.DisplayOrReportException(this, e);
+                    return;
+                }
             }
 
             // if no uri was saved to publish to or user chose to view the dialog show the dialog
-            if (showPublishDocDlg)
+            if (publishToSaveUri == DialogResult.No)
             {
-                using (var publishDocumentDlg = new PublishDocumentDlg(this, servers, fileName, GetFileFormatOnDisk()))
+                var publishDocumentDlg = PublishDocumentDlgPanorama.Create(
+                    this, servers, fileName, GetFileFormatOnDisk(), this, publishClient);
+
+                if (publishDocumentDlg == null)
+                    return; // User canceled or error during folder loading
+
+                using (publishDocumentDlg)
                 {
-                    publishDocumentDlg.PanoramaPublishClient = publishClient;
                     if (publishDocumentDlg.ShowDialog(this) == DialogResult.OK)
                     {
                         if (ShareDocument(publishDocumentDlg.FileName, publishDocumentDlg.ShareType))
@@ -3650,7 +3762,7 @@ namespace pwiz.Skyline
             }
         }
 
-        private bool PublishToSavedUri(IPanoramaPublishClient publishClient, Uri panoramaSavedUri, string fileName,
+        private DialogResult PublishToSavedUri(IPanoramaPublishClient publishClient, Uri panoramaSavedUri, string fileName,
             ServerList servers)
         {
             var message = TextUtil.LineSeparate(SkylineResources.SkylineWindow_PublishToSavedUri_This_file_was_last_uploaded_to___0_,
@@ -3659,66 +3771,80 @@ namespace pwiz.Skyline
                 MultiButtonMsgDlg.BUTTON_YES, MultiButtonMsgDlg.BUTTON_NO, true);
             switch (result)
             {
-                case DialogResult.No:
-                    return false;
-                case DialogResult.Cancel:
-                    return true;
+                case DialogResult.No: // User said "No" - show folder browser
+                case DialogResult.Cancel: // User canceled - don't show folder browser
+                    return result; 
             }
 
             var server = servers.FirstOrDefault(s => s.URI.Host.Equals(panoramaSavedUri.Host));
             if (server == null)
-                return false;
+            {
+                MessageDlg.Show(this, TextUtil.LineSeparate(
+                    string.Format(SkylineResources.SkylineWindow_PublishToSavedUri_The_server__0__is_not_in_your_list_of_Panorama_servers_,
+                        panoramaSavedUri.Host),
+                    SkylineResources.SkylineWindow_PublishToSavedUri_Go_to_Tools___Options___Panorama_tab_to_add_the_server_to_your_settings_));
+                // CONSIDER: We could offer to let them add the required server
+                return DialogResult.Cancel;
+            }
 
             // If we are given a test publish client use that, otherwise create the default client.
-            publishClient ??= PublishDocumentDlg.GetDefaultPublishClient(server);
+            publishClient ??= PublishDocumentDlgPanorama.GetDefaultPublishClient(server);
 
-            JToken folders;
-            var folderPath = panoramaSavedUri.AbsolutePath;
-            var folderPathNoCtx = PanoramaServer.getFolderPath(server, panoramaSavedUri); // get folder path without the context path
-            try
-            {
-                folders = publishClient.PanoramaClient.GetInfoForFolders(folderPathNoCtx.TrimEnd('/').TrimStart('/'));
-            }
+            // Get folder information with progress dialog (long operation, needs cancellation support)
+            string serverRelativePath = GetServerRelativePathForSavedUri(publishClient, panoramaSavedUri, server);
+            if (serverRelativePath == null)
+                return DialogResult.Cancel;
 
-            catch (Exception e)
-            {
-                if (e is PanoramaServerException || e is WebException) return false;
+            var cancelled = false;
+            var shareType = publishClient.GetShareType(DocumentUI, DocumentFilePath, GetFileFormatOnDisk(), this, ref cancelled);
+            if (cancelled)
+                return DialogResult.Cancel;
 
-                MessageDlg.ShowWithException(this, TextUtil.LineSeparate(Resources.RemoteSession_FetchContents_There_was_an_error_communicating_with_the_server__, e.Message), e);
-                return false;
-            }
+            var zipFilePath = FileTimeEx.GetTimeStampedFileName(fileName);
+            if (!ShareDocument(zipFilePath, shareType))
+                return DialogResult.Cancel;
 
-            // must escape uri string as panorama api does not and strings are escaped in schema
-            if (folders?[@"path"] == null || !folderPath.Contains(Uri.EscapeUriString(folders[@"path"].ToString())))
-                return false;
-
-            if (!(PanoramaUtil.HasUploadPermissions(folders) && PanoramaUtil.HasTargetedMsModule(folders)))
-                return false;
-
-            ShareType shareType;
-            try
-            {
-                var cancelled = false;
-                shareType = publishClient.GetShareType(DocumentUI, DocumentFilePath, GetFileFormatOnDisk(), this, ref cancelled);
-                if (cancelled)
-                {
-                    return true;
-                }
-            }
-            catch (PanoramaServerException pse)
-            {
-                MessageDlg.ShowWithException(this, pse.Message, pse);
-                return false;
-            }
-
-            var zipFilePath = FileEx.GetTimeStampedFileName(fileName);
-            if (!ShareDocument(zipFilePath, shareType)) 
-                return false;
-
-            var serverRelativePath = folders[@"path"].ToString() + '/'; 
-            serverRelativePath = serverRelativePath.TrimStart('/'); 
             publishClient.UploadSharedZipFile(this, zipFilePath, serverRelativePath);
-            return true; // success!
+            return DialogResult.Cancel;
+        }
+
+        /// <summary>
+        /// Validates saved URI folder and returns the server-relative path for upload.
+        /// Returns null if validation fails or user cancels.
+        /// </summary>
+        private string GetServerRelativePathForSavedUri(IPanoramaPublishClient publishClient, Uri panoramaSavedUri, PanoramaServer server)
+        {
+            JToken folders = null;
+            var folderPath = panoramaSavedUri.AbsolutePath;
+            var folderPathNoCtx = PanoramaServer.GetFolderPath(server, panoramaSavedUri); // get folder path without the context path
+            var folderToQuery = folderPathNoCtx.TrimEnd('/').TrimStart('/');
+            
+            // Get folder information with progress dialog (can be slow, needs cancellation)
+            using (var waitDlg = new LongWaitDlg())
+            {
+                waitDlg.Text = SkylineResources.SkylineWindow_PublishToSavedUri_Validating_saved_folder;
+                var status = waitDlg.PerformWork(this, 800, progressMonitor =>
+                {
+                    // Set initial message with indeterminate progress
+                    progressMonitor.UpdateProgress(new ProgressStatus(PanoramaClient.Properties.Resources.PanoramaFolderBrowser_InitializeServers_Requesting_remote_server_folders).ChangePercentComplete(-1));
+                    folders = publishClient.PanoramaClient.GetInfoForFolders(folderToQuery, progressMonitor, new ProgressStatus());
+                });
+                
+                if (status.IsCanceled)
+                    return null; // User canceled
+            }
+
+            // Validate folder path matches
+            if (folders?[@"path"] == null || !folderPath.Contains(Uri.EscapeUriString(folders[@"path"].ToString())))
+                return null; // Folder path mismatch
+
+            // Validate upload permissions
+            if (!(PanoramaUtil.HasUploadPermissions(folders) && PanoramaUtil.HasTargetedMsModule(folders)))
+                return null; // No upload permissions
+
+            // Return the server-relative path for upload
+            var serverRelativePath = folders[@"path"].ToString() + '/';
+            return serverRelativePath.TrimStart('/');
         }
 
 

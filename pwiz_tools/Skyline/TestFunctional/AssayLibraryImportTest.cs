@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Dario Amodei <damodei .at. stanford.edu>,
  *                  Mallick Lab, Department of Radiology, Stanford
  *
@@ -26,6 +26,7 @@ using System.Windows.Forms;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using pwiz.Common.Chemistry;
 using pwiz.Common.Collections;
+using pwiz.CommonMsData;
 using pwiz.Skyline.Alerts;
 using pwiz.Skyline.FileUI;
 using pwiz.Skyline.Model;
@@ -33,7 +34,6 @@ using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.DocSettings.Extensions;
 using pwiz.Skyline.Model.Irt;
 using pwiz.Skyline.Model.Lib;
-using pwiz.Skyline.Model.Results;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.SettingsUI;
 using pwiz.Skyline.SettingsUI.Irt;
@@ -663,7 +663,7 @@ namespace pwiz.SkylineTestFunctional
             var calcTemp = SkylineWindow.Document.Settings.PeptideSettings.Prediction.RetentionTime.Calculator as RCalcIrt;
             Assert.IsNotNull(calcTemp);
             string dbPath = calcTemp.DatabasePath;
-            IrtDb db = IrtDb.GetIrtDb(dbPath, null);
+            IrtDb db = IrtDb.GetIrtDb(dbPath);
             var oldPeptides = db.ReadPeptides().ToList();
             var standardSeq = from peptide in oldPeptides where peptide.Standard select peptide.Target;
             standardSeq = standardSeq.ToList();

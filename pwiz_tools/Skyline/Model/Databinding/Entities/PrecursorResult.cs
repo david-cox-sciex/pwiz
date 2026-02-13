@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Nicholas Shulman <nicksh .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -20,10 +20,13 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Globalization;
 using System.Linq;
 using pwiz.Common.Collections;
 using pwiz.Common.DataBinding;
 using pwiz.Common.DataBinding.Attributes;
+using pwiz.Common.PeakFinding;
+using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.DocSettings.AbsoluteQuantification;
 using pwiz.Skyline.Model.ElementLocators;
@@ -116,6 +119,8 @@ namespace pwiz.Skyline.Model.Databinding.Entities
         public double? AverageMassErrorPPM { get { return ChromInfo.MassError; } }
         [Format(NullValue = TextUtil.EXCEL_NA)]
         public int? CountTruncated { get { return ChromInfo.Truncated; } }
+        [Format(Formats.Percent, NullValue = TextUtil.EXCEL_NA)]
+        public double? ProportionTruncated { get { return CalculateProportionTruncated(); } }
         public PeakIdentification Identified { get { return ChromInfo.Identified; } }
         [Format(Formats.STANDARD_RATIO, NullValue = TextUtil.EXCEL_NA)]
         public double? LibraryDotProduct { get { return ChromInfo.LibraryDotProduct; } }
@@ -232,6 +237,24 @@ namespace pwiz.Skyline.Model.Databinding.Entities
             }
         }
 
+        [ChildDisplayName("Original{0}")]
+        [Format(Formats.RETENTION_TIME)]
+        public ScoredPeakValue OriginalPeak {
+            get
+            {
+                return ScoredPeakValue.FromScoredPeak(ChromInfo.OriginalPeak);
+            }
+        }
+
+        [ChildDisplayName("Reintegrated{0}")]
+        [Format(Formats.RETENTION_TIME)]
+        public ScoredPeakValue ReintegratedPeak
+        {
+            get
+            {
+                return ScoredPeakValue.FromScoredPeak(ChromInfo.ReintegratedPeak);
+            }
+        }
 
         [InvariantDisplayName("PrecursorReplicateNote")]
         [Importable]
@@ -278,6 +301,18 @@ namespace pwiz.Skyline.Model.Databinding.Entities
         public PeptideResult PeptideResult 
         {
             get { return _peptideResult = _peptideResult ?? new PeptideResult(Precursor.Peptide, GetResultFile()); }
+        }
+
+        [ChildDisplayName("Imputed{0}")]
+        [Format(Formats.RETENTION_TIME)]
+        public ImputedPeakBounds ImputedPeak
+        {
+            get
+            {
+                return ImputedPeakBounds.FromPeakBounds(DataSchema.PeakBoundaryImputer
+                    .GetImputedPeakQuick(PeptideResult.Peptide.DocNode,
+                        GetResultFile().Replicate.ChromatogramSet, GetResultFile().ChromFileInfo.FilePath)?.PeakBounds);
+            }
         }
 
         [InvariantDisplayName("PrecursorResultLocator")]
@@ -357,8 +392,7 @@ namespace pwiz.Skyline.Model.Databinding.Entities
                 return null;
             }
             float tolerance = (float) SrmDocument.Settings.TransitionSettings.Instrument.MzMatchTolerance;
-            var ms1Chromatograms = new List<TimeIntensities>();
-            var fragmentChromatograms = new List<TimeIntensities>();
+            var chromatogramInfos = new List<ChromatogramInfo>();
             foreach (var transitionDocNode in Precursor.DocNode.Transitions)
             {
                 var transitionChromInfo = GetResultFile().FindChromInfo(transitionDocNode.Results);
@@ -374,24 +408,29 @@ namespace pwiz.Skyline.Model.Databinding.Entities
                 {
                     continue;
                 }
+                chromatogramInfos.Add(chromatogramInfo);
+            }
 
-                var timeIntensities = timeIntensitiesGroup.TransitionTimeIntensities[chromatogramInfo.TransitionIndex];
-
-                if (chromatogramInfo.Source == ChromSource.ms1)
-                {
-                    ms1Chromatograms.Add(timeIntensities);
-                }
-                else if (chromatogramInfo.Source == ChromSource.fragment)
-                {
-                    fragmentChromatograms.Add(timeIntensities);
-                }
+            var chromatogramsBySource = chromatogramInfos.ToLookup(
+                chromInfo => chromInfo.Source, chromInfo => timeIntensitiesGroup.TransitionTimeIntensities[chromInfo.TransitionIndex]);
+            var ms1Chromatograms = chromatogramsBySource[ChromSource.sim].ToList();
+            if (ms1Chromatograms.Count == 0)
+            {
+                ms1Chromatograms = chromatogramsBySource[ChromSource.ms1].ToList();
             }
 
             return Tuple.Create(GetIonMetrics(resultFileMetadata, ms1Chromatograms),
-                GetIonMetrics(resultFileMetadata, fragmentChromatograms));
+                GetIonMetrics(resultFileMetadata, chromatogramsBySource[ChromSource.fragment].ToList()));
         }
 
         private LcPeakIonMetrics GetIonMetrics(ResultFileMetaData resultFileMetadata, IList<TimeIntensities> chromatograms)
+        {
+            return GetPeakIonMetrics(resultFileMetadata, ChromInfo.StartRetentionTime.Value,
+                ChromInfo.EndRetentionTime.Value, chromatograms);
+        }
+
+        public static LcPeakIonMetrics GetPeakIonMetrics(ResultFileMetaData resultFileMetadata, float startTime,
+            float endTime, IList<TimeIntensities> chromatograms)
         {
             var scanIndexes = chromatograms.FirstOrDefault()?.ScanIds;
             if (scanIndexes == null)
@@ -405,7 +444,7 @@ namespace pwiz.Skyline.Model.Databinding.Entities
                 return null;
             }
 
-            int iStart = CollectionUtil.BinarySearch(times, ChromInfo.StartRetentionTime.Value);
+            int iStart = CollectionUtil.BinarySearch(times, startTime);
             if (iStart < 0)
             {
                 iStart = Math.Max(0, ~iStart - 1);
@@ -428,17 +467,17 @@ namespace pwiz.Skyline.Model.Databinding.Entities
 
 
                 var totalIonCurrent = spectrumMetadata.TotalIonCurrent.GetValueOrDefault();
-                ticIntensities.Add((float) totalIonCurrent);
-                if (time > MaxEndTime)
+                ticIntensities.Add((float)totalIonCurrent);
+                if (time > endTime)
                 {
                     break;
                 }
 
-                if (time < MinStartTime)
+                if (time < startTime)
                 {
                     continue;
                 }
-                
+
                 double intensity = 0;
                 foreach (var chromatogramInfo in chromatograms)
                 {
@@ -448,7 +487,7 @@ namespace pwiz.Skyline.Model.Databinding.Entities
                 double? injectionTimeSeconds = spectrumMetadata.InjectionTime / 1000;
                 double? ionCount = intensity * injectionTimeSeconds;
                 double? spectrumIonCount = totalIonCurrent * injectionTimeSeconds;
-                
+
                 if (apexIntensity == null || intensity > apexIntensity.Value)
                 {
                     apexAnalyteIonCount = ionCount;
@@ -470,7 +509,7 @@ namespace pwiz.Skyline.Model.Databinding.Entities
             if (ticTimes.Count != 0)
             {
                 var ticTimeIntensities = new TimeIntensities(ticTimes, ticIntensities);
-                var chromPeak = ChromPeak.IntegrateWithoutBackground(ticTimeIntensities, (float)MinStartTime, (float)MaxEndTime, 0, null);
+                var chromPeak = ChromPeak.IntegrateWithoutBackground(ticTimeIntensities, startTime, endTime, 0, null);
                 Assume.AreEqual(0f, chromPeak.BackgroundArea);
                 lcPeakIonMetrics = lcPeakIonMetrics.ChangeTotalIonCurrentArea(chromPeak.Area);
             }
@@ -487,6 +526,85 @@ namespace pwiz.Skyline.Model.Databinding.Entities
             }
 
             return lcPeakIonMetrics;
+        }
+
+        private double? CalculateProportionTruncated()
+        {
+            double totalArea = 0;
+            double truncatedArea = 0;
+            var srmSettings = DataSchema.Document.Settings;
+            var resultFile = GetResultFile();
+            foreach (var transition in Precursor.DocNode.Transitions)
+            {
+                if (!transition.IsQuantitative(srmSettings))
+                {
+                    continue;
+                }
+
+                foreach (var transitionChromInfo in transition.GetSafeChromInfo(
+                             resultFile.Replicate.ReplicateIndex))
+                {
+                    if (transitionChromInfo.OptimizationStep != resultFile.OptimizationStep ||
+                        !ReferenceEquals(transitionChromInfo.FileId, resultFile.ChromFileInfoId))
+                    {
+                        continue;
+                    }
+
+                    if (!transitionChromInfo.IsTruncated.HasValue || transitionChromInfo.Area <= 0)
+                    {
+                        continue;
+                    }
+
+                    totalArea += transitionChromInfo.Area;
+                    if (transitionChromInfo.IsTruncated.Value)
+                    {
+                        truncatedArea += transitionChromInfo.Area;
+                    }
+                }
+            }
+
+            if (totalArea <= 0)
+            {
+                return null;
+            }
+
+            return truncatedArea / totalArea;
+        }
+
+        
+        public class ImputedPeakBounds : IFormattable
+        {
+            public ImputedPeakBounds(double startTime, double endTime)
+            {
+                StartTime = startTime;
+                EndTime = endTime;
+            }
+
+            [Format(Formats.RETENTION_TIME)]
+            public double StartTime { get; }
+            [Format(Formats.RETENTION_TIME)]
+            public double EndTime { get; }
+
+            public string ToString(string format, IFormatProvider formatProvider)
+            {
+                return string.Format(EntitiesResources.CandidatePeakGroup_ToString___0___1__,
+                    StartTime.ToString(format, formatProvider), EndTime.ToString(format, formatProvider));
+            }
+
+            public static ImputedPeakBounds FromPeakBounds(PeakBounds peakBounds)
+            {
+                if (peakBounds == null)
+                {
+                    return null;
+                }
+
+                return new ImputedPeakBounds(peakBounds.StartTime, peakBounds.EndTime);
+            }
+
+            public override string ToString()
+            {
+                return ToString(null, CultureInfo.CurrentCulture);
+            }
         }
     }
 }

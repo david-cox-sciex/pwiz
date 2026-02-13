@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Nicholas Shulman <nicksh .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -155,11 +155,16 @@ namespace ResourcesOrganizer.ResourcesModel
             using var zipArchive = new ZipArchive(stream, ZipArchiveMode.Create);
             foreach (var file in ResourcesFiles)
             {
-                var entry = zipArchive.CreateEntry(file.Key);
-                using (var entryStream = entry.Open())
+                // Only export English (invariant) files when overrideAll is true
+                // In incremental mode, we only update localized files to avoid whitespace reformatting
+                if (overrideAll)
                 {
-                    using var writer = new StreamWriter(entryStream, TextUtil.Utf8Encoding);
-                    writer.Write(TextUtil.SerializeDocument(file.Value.ExportResx(null, overrideAll)));
+                    var entry = zipArchive.CreateEntry(file.Key);
+                    using (var entryStream = entry.Open())
+                    {
+                        using var writer = new StreamWriter(entryStream, TextUtil.Utf8Encoding);
+                        writer.Write(TextUtil.SerializeDocument(file.Value.ExportResx(null, overrideAll)));
+                    }
                 }
                 foreach (var language in file.Value.Entries
                              .SelectMany(resourceEntry => resourceEntry.LocalizedValues.Keys).Distinct())
@@ -332,6 +337,8 @@ namespace ResourcesOrganizer.ResourcesModel
                 {
                     Value = string.Empty, File = entry.Invariant.IsLocalizableText ? null : entry.Invariant.File
                 });
+            var reviewedResourcesWithoutKey = reviewedDb.ResourcesFiles.Values.SelectMany(file => file.Entries)
+                .ToLookup(entry => entry.Invariant with { File = string.Empty, Name = string.Empty });
             var newFiles = new Dictionary<string, ResourcesFile>();
             foreach (var resourcesEntry in ResourcesFiles.ToList())
             {
@@ -348,7 +355,7 @@ namespace ResourcesOrganizer.ResourcesModel
                         {
                             if (!reviewedResources.TryGetValue(entry.Invariant, out reviewedEntries))
                             {
-                                reviewedEntries = [];
+                                reviewedEntries = reviewedResourcesWithoutKey[entry.Invariant with { Name = string.Empty, File = string.Empty }].ToList();
                             }
                         }
 
@@ -365,7 +372,7 @@ namespace ResourcesOrganizer.ResourcesModel
 
                         if (reviewedTranslations.Count > 1)
                         {
-                            currentValue = entry.LocalizedValueIssue(LocalizationIssue.InconsistentTranslation);
+                            currentValue = entry.LocalizedValueIssue(new InconsistentTranslation(reviewedTranslations));
                         }
                         else if (reviewedEntries.Any())
                         {
@@ -464,52 +471,95 @@ namespace ResourcesOrganizer.ResourcesModel
         public void ExportLocalizationCsv(string path, string language, out int entryCount)
         {
             var records = new List<LocalizationCsvRecord>();
-            foreach (var invariantEntry in GetInvariantResources().OrderBy(kvp=>kvp.Key))
+
+            // Iterate over ResourcesFiles directly to preserve file path information
+            var entriesWithFiles = ResourcesFiles
+                .SelectMany(kvp => kvp.Value.Entries
+                    .Where(entry => entry.Invariant.IsLocalizableText && NeedsLocalizationHelp(entry, language))
+                    .Select(entry => (FilePath: kvp.Key, Entry: entry)))
+                .GroupBy(x => x.Entry.Invariant with { File = string.Empty, Name = string.Empty });
+
+            foreach (var textGroup in entriesWithFiles)
             {
-                var invariantKey = invariantEntry.Key;
-                if (!invariantKey.IsLocalizableText)
-                {
-                    continue;
-                }
+                var groupList = textGroup.ToList();
+                var uniqueFiles = groupList.Select(x => x.FilePath).Distinct().OrderBy(f => f).ToList();
+                var fileCount = uniqueFiles.Count;
 
-                var issues = invariantEntry.Value.Select(value => value.GetTranslation(language)?.Issue)
-                    .OfType<LocalizationIssue>().Distinct().ToList();
-                if (issues.Count > 1)
-                {
-                    Console.Error.WriteLine("Multiple different localization issues found for {0}: {1}", invariantEntry.Key, TextUtil.LineSeparate(issues.Select(issue=>issue.GetIssueDetails(null))));
-                }
+                // Create records with file path association preserved
+                var recordsWithFiles = groupList
+                    .Select(x => (FilePath: x.FilePath, Record: MakeLocalizationCsvRecord(x.Entry, language)))
+                    .ToList();
 
-                var issue = issues.FirstOrDefault();
-                var localizedValues = invariantEntry.Value.Select(value => value.GetTranslation(language))
-                    .OfType<LocalizedValue>().ToList();
-                var localizedText = localizedValues.Select(value => value.Value).FirstOrDefault();
-                if (localizedText == null || issue != null)
+                if (recordsWithFiles.Count > 1)
                 {
-                    var csvRecord = new LocalizationCsvRecord
+                    var uniqueIssues = groupList.Select(x => x.Entry.GetTranslation(language)?.Issue)
+                        .OfType<LocalizationIssue>()
+                        .Where(issue => issue != LocalizationIssue.MissingTranslation).Distinct()
+                        .ToList();
+                    if (uniqueIssues.Count == 1)
                     {
-                        Name = invariantKey.Name!, 
-                        Comment = invariantKey.Comment!,
-                        English = invariantKey.Value,
-                        File = invariantEntry.Key.File ?? string.Empty,
-                        FileCount = invariantEntry.Value.Count
-                    };
-                    if (localizedText != invariantEntry.Key.Value)
-                    {
-                        csvRecord = csvRecord with { Translation = localizedText ?? string.Empty };
+                        recordsWithFiles = recordsWithFiles
+                            .Select(x => (x.FilePath, Record: uniqueIssues[0].StoreInCsvRecord(x.Record)))
+                            .Distinct().ToList();
                     }
 
-                    if (issue != null)
+                    // Build a file list for context (show up to 3 files, with "..." if more)
+                    var fileList = uniqueFiles.Count <= 3
+                        ? string.Join("; ", uniqueFiles)
+                        : string.Join("; ", uniqueFiles.Take(3)) + "; ...";
+
+                    var unqualifiedRecords = recordsWithFiles.Select(x => x.Record with
                     {
-                        csvRecord = issue.StoreInCsvRecord(csvRecord);
+                        File = fileList,
+                        Name = string.Empty,
+                        FileCount = fileCount
+                    }).Distinct().ToList();
+                    if (unqualifiedRecords.Count == 1)
+                    {
+                        records.Add(unqualifiedRecords[0]);
+                        continue;
                     }
-                    records.Add(csvRecord);
                 }
+
+                // For non-consolidated entries, each record keeps its own file path with FileCount=1
+                records.AddRange(recordsWithFiles.Select(x => x.Record with { FileCount = 1, File = x.FilePath }));
             }
             using var stream = new FileStream(path, FileMode.Create);
             using var writer = new StreamWriter(stream, new UTF8Encoding(false));
             using var csvWriter = new CsvWriter(writer, CultureInfo.InvariantCulture);
             csvWriter.WriteRecords(records);
             entryCount = records.Count;
+        }
+
+        private bool NeedsLocalizationHelp(ResourceEntry resourceEntry, string language)
+        {
+            var translation = resourceEntry.GetTranslation(language);
+            return translation == null || translation.Issue != null;
+        }
+
+        private LocalizationCsvRecord MakeLocalizationCsvRecord(ResourceEntry resourceEntry, string language)
+        {
+            var translation = resourceEntry.GetTranslation(language);
+            var record = new LocalizationCsvRecord
+            {
+                Name = resourceEntry.Invariant.Name ?? string.Empty,
+                Comment = resourceEntry.Invariant.Comment ?? string.Empty,
+                English = resourceEntry.Invariant.Value,
+                File = resourceEntry.Invariant.File ?? string.Empty
+            };
+            if (translation?.Value != resourceEntry.Invariant.Value)
+            {
+                record = record with { Translation = translation?.Value ?? string.Empty };
+            }
+
+            var issue = translation?.Issue;
+
+            if (issue != null && issue != LocalizationIssue.MissingTranslation)
+            {
+                record = issue.StoreInCsvRecord(record);
+            }
+
+            return record;
         }
 
         public ResourcesDatabase ImportLocalizationCsv(LanguageFilePath languageFilePath, out int totalEntryCount, out int totalMatchCount, out int totalChangeCount)

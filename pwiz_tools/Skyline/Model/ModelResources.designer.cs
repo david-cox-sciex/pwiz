@@ -19,7 +19,7 @@ namespace pwiz.Skyline.Model {
     // class via a tool like ResGen or Visual Studio.
     // To add or remove a member, edit your .ResX file then rerun ResGen
     // with the /str option, or rebuild your VS project.
-    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "4.0.0.0")]
+    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "17.0.0.0")]
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
     [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute()]
     public class ModelResources {
@@ -203,12 +203,135 @@ namespace pwiz.Skyline.Model {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to In &quot;{0}&quot;: {1}.
+        /// </summary>
+        public static string AbstractModificationMatcher_CreateDocNodeFromSettings_In___0_____1_ {
+            get {
+                return ResourceManager.GetString("AbstractModificationMatcher_CreateDocNodeFromSettings_In___0_____1_", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to In entry &quot;{0}&quot; of &quot;{1}&quot;: {2}.
+        /// </summary>
+        public static string AbstractModificationMatcher_CreateDocNodeFromSettings_In_entry___0___of___1_____2_ {
+            get {
+                return ResourceManager.GetString("AbstractModificationMatcher_CreateDocNodeFromSettings_In_entry___0___of___1_____2" +
+                        "_", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to The following modifications could not be interpreted..
         /// </summary>
         public static string AbstractModificationMatcher_UninterpretedMods_The_following_modifications_could_not_be_interpreted {
             get {
                 return ResourceManager.GetString("AbstractModificationMatcher_UninterpretedMods_The_following_modifications_could_n" +
                         "ot_be_interpreted", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Warning: The predicted library might be of poor quality, due to the following modifications detected with limited support in the default predictive model: 
+        ///
+        ///{0}
+        ///
+        ///Please consider using the fine-tuning method provided by Carafe for building this library.
+        ///
+        ///Would you like to continue building this predicted library?.
+        /// </summary>
+        public static string Alphapeptdeep_Warn_limited_modification {
+            get {
+                return ResourceManager.GetString("Alphapeptdeep_Warn_limited_modification", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Warning: The predicted library will be incomplete, due to the following unknown modifications detected: 
+        ///
+        ///{0}
+        ///
+        ///Would you like to continue building this predicted library?.
+        /// </summary>
+        public static string Alphapeptdeep_Warn_unknown_modification {
+            get {
+                return ResourceManager.GetString("Alphapeptdeep_Warn_unknown_modification", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to AlphaPeptDeep finished in {0} minutes {1} seconds..
+        /// </summary>
+        public static string AlphapeptdeepLibraryBuilder_ExecutePeptdeep_AlphaPeptDeep_finished_in__0__minutes__1__seconds_ {
+            get {
+                return ResourceManager.GetString("AlphapeptdeepLibraryBuilder_ExecutePeptdeep_AlphaPeptDeep_finished_in__0__minutes" +
+                        "__1__seconds_", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Failed to build library by running the AlphaPeptDeep cmd-flow command..
+        /// </summary>
+        public static string AlphapeptdeepLibraryBuilder_ExecutePeptdeep_Failed_to_build_library_by_executing_the_peptdeep_cmd_flow_command_ {
+            get {
+                return ResourceManager.GetString("AlphapeptdeepLibraryBuilder_ExecutePeptdeep_Failed_to_build_library_by_executing_" +
+                        "the_peptdeep_cmd_flow_command_", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Importing spectral library.
+        /// </summary>
+        public static string AlphapeptdeepLibraryBuilder_Importing_spectral_library {
+            get {
+                return ResourceManager.GetString("AlphapeptdeepLibraryBuilder_Importing_spectral_library", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to BlibBuild completed successfully..
+        /// </summary>
+        public static string AlphapeptdeepLibraryBuilder_ImportSpectralLibrary_BlibBuild_completed_successfully_ {
+            get {
+                return ResourceManager.GetString("AlphapeptdeepLibraryBuilder_ImportSpectralLibrary_BlibBuild_completed_successfull" +
+                        "y_", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to BlibBuild failed to complete..
+        /// </summary>
+        public static string AlphapeptdeepLibraryBuilder_ImportSpectralLibrary_BlibBuild_failed_to_complete_ {
+            get {
+                return ResourceManager.GetString("AlphapeptdeepLibraryBuilder_ImportSpectralLibrary_BlibBuild_failed_to_complete_", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Failed to generate settings.yaml file by running the AlphaPeptDeep export-settings command..
+        /// </summary>
+        public static string AlphapeptdeepLibraryBuilder_PrepareSettingsFile_Failed_to_generate_settings_yaml_file_by_executing_the_peptdeep_export_settings_command_ {
+            get {
+                return ResourceManager.GetString("AlphapeptdeepLibraryBuilder_PrepareSettingsFile_Failed_to_generate_settings_yaml_" +
+                        "file_by_executing_the_peptdeep_export_settings_command_", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Preparing settings file.
+        /// </summary>
+        public static string AlphapeptdeepLibraryBuilder_PrepareSettingsFile_Preparing_settings_file {
+            get {
+                return ResourceManager.GetString("AlphapeptdeepLibraryBuilder_PrepareSettingsFile_Preparing_settings_file", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Running AlphaPeptDeep.
+        /// </summary>
+        public static string AlphapeptdeepLibraryBuilder_Running_AlphaPeptDeep {
+            get {
+                return ResourceManager.GetString("AlphapeptdeepLibraryBuilder_Running_AlphaPeptDeep", resourceCulture);
             }
         }
         
@@ -323,6 +446,35 @@ namespace pwiz.Skyline.Model {
         public static string ChromatogramExporter_GetExtractorName_Invalid_extractor_name_ {
             get {
                 return ResourceManager.GetString("ChromatogramExporter_GetExtractorName_Invalid_extractor_name_", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Error: The specified instrument type &apos;{0}&apos; does not match the installed software &apos;{1}&apos;..
+        /// </summary>
+        public static string CommandLine_ExportInstrumentFile_Error__The_specified_instrument_type___0___does_not_match_the_installed_software___1___ {
+            get {
+                return ResourceManager.GetString("CommandLine_ExportInstrumentFile_Error__The_specified_instrument_type___0___does_" +
+                        "not_match_the_installed_software___1___", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Use the instrument type &apos;Thermo&apos; to export a method with the installed software..
+        /// </summary>
+        public static string CommandLine_ExportInstrumentFile_Use_the_instrument_type__Thermo__to_export_a_method_with_the_installed_software_ {
+            get {
+                return ResourceManager.GetString("CommandLine_ExportInstrumentFile_Use_the_instrument_type__Thermo__to_export_a_met" +
+                        "hod_with_the_installed_software_", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Compound from Skyline document {0} - {1}.
+        /// </summary>
+        public static string Compound_ParseObject_Compound_from_Skyline_document__0_____1_ {
+            get {
+                return ResourceManager.GetString("Compound_ParseObject_Compound_from_Skyline_document__0_____1_", resourceCulture);
             }
         }
         
@@ -602,6 +754,26 @@ namespace pwiz.Skyline.Model {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Cannot use a template method from another server..
+        /// </summary>
+        public static string ExportProperties_ExportWatersConnectMethod_Cannot_use_a_template_method_from_another_server_ {
+            get {
+                return ResourceManager.GetString("ExportProperties_ExportWatersConnectMethod_Cannot_use_a_template_method_from_anot" +
+                        "her_server_", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to No matching Waters Connect account is found for this URL..
+        /// </summary>
+        public static string ExportProperties_ExportWatersConnectMethod_No_matching_Waters_Connect_account_is_found_for_this_URL_ {
+            get {
+                return ResourceManager.GetString("ExportProperties_ExportWatersConnectMethod_No_matching_Waters_Connect_account_is_" +
+                        "found_for_this_URL_", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Average.
         /// </summary>
         public static string ExportSchedulingAlgorithmExtension_LOCALIZED_VALUES_Average {
@@ -652,6 +824,15 @@ namespace pwiz.Skyline.Model {
         public static string ExportStrategyExtension_LOCALIZED_VALUES_Single {
             get {
                 return ResourceManager.GetString("ExportStrategyExtension_LOCALIZED_VALUES_Single", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to WcDecide.
+        /// </summary>
+        public static string ExportStrategyExtension_LOCALIZED_VALUES_WcDecide {
+            get {
+                return ResourceManager.GetString("ExportStrategyExtension_LOCALIZED_VALUES_WcDecide", resourceCulture);
             }
         }
         
@@ -928,6 +1109,24 @@ namespace pwiz.Skyline.Model {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Preparing prediction input file.
+        /// </summary>
+        public static string LibraryHelper_PreparePrecursorInputFile_Preparing_prediction_input_file {
+            get {
+                return ResourceManager.GetString("LibraryHelper_PreparePrecursorInputFile_Preparing_prediction_input_file", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Preparing training input file.
+        /// </summary>
+        public static string LibraryHelper_PrepareTrainingInputFile_Preparing_training_input_file {
+            get {
+                return ResourceManager.GetString("LibraryHelper_PrepareTrainingInputFile_Preparing_training_input_file", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Importing {0}.
         /// </summary>
         public static string MassListImporter_Import_Importing__0__ {
@@ -1179,6 +1378,20 @@ namespace pwiz.Skyline.Model {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Administrative privileges are required to install Nvidia Cuda tools the first time. Consult with your system administrator if you don&apos;t have the necessary permissions and ask them to run the following script:
+        ///
+        ///{0}
+        ///
+        ///Would you like to continue?
+        ///    .
+        /// </summary>
+        public static string NvidiaInstaller_Requesting_Administrator_elevation {
+            get {
+                return ResourceManager.GetString("NvidiaInstaller_Requesting_Administrator_elevation", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to The precursor m/z {0} is not measureable with your current instrument settings..
         /// </summary>
         public static string PasteDlg_GetMoleculeTransitionGroup_The_precursor_m_z__0__is_not_measureable_with_your_current_instrument_settings_ {
@@ -1410,6 +1623,24 @@ namespace pwiz.Skyline.Model {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Peptide.
+        /// </summary>
+        public static string PeptideDocNode_Title {
+            get {
+                return ResourceManager.GetString("PeptideDocNode_Title", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Molecule.
+        /// </summary>
+        public static string PeptideDocNode_Title_Molecule {
+            get {
+                return ResourceManager.GetString("PeptideDocNode_Title_Molecule", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to {0} (rank {1}).
         /// </summary>
         public static string PeptideDocNodeToString__0__rank__1__ {
@@ -1474,6 +1705,33 @@ namespace pwiz.Skyline.Model {
         public static string PersistedViews_ExternalToolsGroup_External_Tools {
             get {
                 return ResourceManager.GetString("PersistedViews_ExternalToolsGroup_External_Tools", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Detailed Log.
+        /// </summary>
+        public static string PersistedViews_GetDefaults_Detailed_Log {
+            get {
+                return ResourceManager.GetString("PersistedViews_GetDefaults_Detailed_Log", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Peptide Normalized Areas.
+        /// </summary>
+        public static string PersistedViews_GetLocalizedReportNames_Peptide_Normalized_Areas {
+            get {
+                return ResourceManager.GetString("PersistedViews_GetLocalizedReportNames_Peptide_Normalized_Areas", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Protein Abundances.
+        /// </summary>
+        public static string PersistedViews_GetLocalizedReportNames_Protein_Abundances {
+            get {
+                return ResourceManager.GetString("PersistedViews_GetLocalizedReportNames_Protein_Abundances", resourceCulture);
             }
         }
         
@@ -1821,6 +2079,19 @@ namespace pwiz.Skyline.Model {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to The file &quot;{0}&quot; appears to be a {1} mass spectrometry data file, rather than a Skyline document (.sky or .sky.zip file).
+        ///If you are trying to search the file for peptides or molecules in the raw data, please use File &gt; Search.
+        ///Otherwise, to work with mass spec data in Skyline, first set up targets (see Help &gt; Tutorials), then use File &gt; Import &gt; Results to extract chromatograms for your targets from your mass spec data.
+        ///If you want to inspect the raw data, use a viewer like SeeMS (download from proteowiza [rest of string was truncated]&quot;;.
+        /// </summary>
+        public static string SrmDocument_IsSkylineFile_The_file___0___appears_to_be_a__1__mass_spectrometry_data_file {
+            get {
+                return ResourceManager.GetString("SrmDocument_IsSkylineFile_The_file___0___appears_to_be_a__1__mass_spectrometry_da" +
+                        "ta_file", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to The peptide {0} was found multiple times with user modifications..
         /// </summary>
         public static string SrmDocument_MergeMatchingPeptidesUserInfo_The_peptide__0__was_found_multiple_times_with_user_modifications {
@@ -1960,12 +2231,52 @@ namespace pwiz.Skyline.Model {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Failed to find a machine name key with a valid ProgramPath value in the Windows registry key &apos;{0}&apos; from:.
+        /// </summary>
+        public static string ThermoDllFinder_GetSoftwareInfo_Failed_to_find_a_machine_name_key_with_a_valid_ProgramPath {
+            get {
+                return ResourceManager.GetString("ThermoDllFinder_GetSoftwareInfo_Failed_to_find_a_machine_name_key_with_a_valid_Pr" +
+                        "ogramPath", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The key &apos;{0}&apos; was not found in the Windows registry..
+        /// </summary>
+        public static string ThermoDllFinder_GetSoftwareInfo_The_key__0__was_not_found_in_the_Windows_registry_ {
+            get {
+                return ResourceManager.GetString("ThermoDllFinder_GetSoftwareInfo_The_key__0__was_not_found_in_the_Windows_registry" +
+                        "_", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The ProgramPath {0} for the instrument {1} is missing required files:.
+        /// </summary>
+        public static string ThermoDllFinder_GetSoftwareInfo_The_ProgramPath__0__for_the_instrument__1__is_missing_required_files_ {
+            get {
+                return ResourceManager.GetString("ThermoDllFinder_GetSoftwareInfo_The_ProgramPath__0__for_the_instrument__1__is_mis" +
+                        "sing_required_files_", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Failed to find a valid Thermo instrument installation..
         /// </summary>
         public static string ThermoMassListExporter_EnsureLibraries_Failed_to_find_a_valid_Thermo_instrument_installation_ {
             get {
                 return ResourceManager.GetString("ThermoMassListExporter_EnsureLibraries_Failed_to_find_a_valid_Thermo_instrument_i" +
                         "nstallation_", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The installed Thermo instrument type &apos;{0}&apos; does not match the requested output method type &apos;{1}&apos;..
+        /// </summary>
+        public static string ThermoMassListExporter_EnsureLibraries_The_installed_Thermo_instrument_type___0___does_not_match_the_requested_output_method_type___1___ {
+            get {
+                return ResourceManager.GetString("ThermoMassListExporter_EnsureLibraries_The_installed_Thermo_instrument_type___0__" +
+                        "_does_not_match_the_requested_output_method_type___1___", resourceCulture);
             }
         }
         
@@ -1986,6 +2297,16 @@ namespace pwiz.Skyline.Model {
             get {
                 return ResourceManager.GetString("ThermoMassListExporter_EnsureLibraries_Thermo_method_creation_software_may_not_be" +
                         "_installed_correctly_", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Unknown Thermo instrument type &apos;{0}&apos; installed..
+        /// </summary>
+        public static string ThermoMassListExporter_EnsureLibraries_Unknown_Thermo_instrument_type___0___installed_ {
+            get {
+                return ResourceManager.GetString("ThermoMassListExporter_EnsureLibraries_Unknown_Thermo_instrument_type___0___insta" +
+                        "lled_", resourceCulture);
             }
         }
         
@@ -2081,6 +2402,51 @@ namespace pwiz.Skyline.Model {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to {0} [{1}].
+        /// </summary>
+        public static string TransitionDocNode_GetLabel__0__1__ {
+            get {
+                return ResourceManager.GetString("TransitionDocNode_GetLabel__0__1__", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to irank {0}.
+        /// </summary>
+        public static string TransitionDocNode_GetLabel_irank__0__ {
+            get {
+                return ResourceManager.GetString("TransitionDocNode_GetLabel_irank__0__", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to rank {0}.
+        /// </summary>
+        public static string TransitionDocNode_GetLabel_rank__0__ {
+            get {
+                return ResourceManager.GetString("TransitionDocNode_GetLabel_rank__0__", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Transition.
+        /// </summary>
+        public static string TransitionDocNode_Title {
+            get {
+                return ResourceManager.GetString("TransitionDocNode_Title", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Transitions.
+        /// </summary>
+        public static string TransitionDocNode_Titles {
+            get {
+                return ResourceManager.GetString("TransitionDocNode_Titles", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Precursor charge {0} must be between {1} and {2}..
         /// </summary>
         public static string TransitionGroup_Validate_Precursor_charge__0__must_be_between__1__and__2__ {
@@ -2157,6 +2523,15 @@ namespace pwiz.Skyline.Model {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Precursor.
+        /// </summary>
+        public static string TransitionGroupDocNode_Title {
+            get {
+                return ResourceManager.GetString("TransitionGroupDocNode_Title", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Undo transaction may not be started in undo/redo..
         /// </summary>
         public static string UndoManager_BeginTransaction_Undo_transaction_may_not_be_started_in_undo_redo {
@@ -2193,6 +2568,44 @@ namespace pwiz.Skyline.Model {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Creating MRM method &apos;{0}&apos; from Skyline document &apos;{1}&apos;.
+        /// </summary>
+        public static string WatersConnectMethodExporter_ExportMethod_Creating_MRM_method___0___from_Skyline_document___1__ {
+            get {
+                return ResourceManager.GetString("WatersConnectMethodExporter_ExportMethod_Creating_MRM_method___0___from_Skyline_d" +
+                        "ocument___1__", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Folder ID is missing. Cannot upload the method. Folder info: {0}.
+        /// </summary>
+        public static string WatersConnectMethodExporter_ExportMethod_Folder_ID_is_missing {
+            get {
+                return ResourceManager.GetString("WatersConnectMethodExporter_ExportMethod_Folder_ID_is_missing", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Method creation from Skyline transition list.
+        /// </summary>
+        public static string WatersConnectMethodExporter_ExportMethod_Method_creation_from_Skyline_transition_list {
+            get {
+                return ResourceManager.GetString("WatersConnectMethodExporter_ExportMethod_Method_creation_from_Skyline_transition_" +
+                        "list", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Exported from Skyline.
+        /// </summary>
+        public static string WatersConnectMethodExporter_ParseMethod_Exported_from_Skyline {
+            get {
+                return ResourceManager.GetString("WatersConnectMethodExporter_ParseMethod_Exported_from_Skyline", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Failed to find a valid MassLynx installation..
         /// </summary>
         public static string WatersMethodExporter_EnsureLibraries_Failed_to_find_a_valid_MassLynx_installation {
@@ -2219,6 +2632,15 @@ namespace pwiz.Skyline.Model {
             get {
                 return ResourceManager.GetString("WatersMethodExporter_EnsureLibraries_Waters_method_creation_software_may_not_be_i" +
                         "nstalled_correctly", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Expected WatersConnectSessionAcquisitionMethod, got {0}..
+        /// </summary>
+        public static string WatersMethodExporter_Wrong_Session_Type {
+            get {
+                return ResourceManager.GetString("WatersMethodExporter_Wrong_Session_Type", resourceCulture);
             }
         }
         

@@ -24,7 +24,6 @@ using System.Text;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using pwiz.Common.Collections;
 using pwiz.Common.SystemUtil;
-using pwiz.Skyline.Util;
 using pwiz.Skyline.Util.Extensions;
 
 namespace pwiz.SkylineTestUtil
@@ -48,8 +47,9 @@ namespace pwiz.SkylineTestUtil
         /// </summary>
         /// <param name="testContext">The test context for the test creating the directory</param>
         /// <param name="relativePathZip">A root project relative path to the ZIP file</param>
-        public TestFilesDir(TestContext testContext, string relativePathZip)
-            : this(testContext, relativePathZip, null)
+        /// <param name="suffix">Optional suffix to append to the directory name to differentiate tests using the same ZIP file</param>
+        public TestFilesDir(TestContext testContext, string relativePathZip, string suffix = null)
+            : this(testContext, relativePathZip, null, suffix)
         {
             
         }
@@ -61,8 +61,9 @@ namespace pwiz.SkylineTestUtil
         /// <param name="testContext">The test context for the test creating the directory</param>
         /// <param name="relativePathZip">A root project relative path to the ZIP file</param>
         /// <param name="directoryName">Name of directory to create in the test results</param>
-        public TestFilesDir(TestContext testContext, string relativePathZip, string directoryName)
-            : this(testContext, relativePathZip, directoryName, null)
+        /// <param name="suffix">Optional suffix to append to the directory name to differentiate tests using the same ZIP file</param>
+        public TestFilesDir(TestContext testContext, string relativePathZip, string directoryName, string suffix = null)
+            : this(testContext, relativePathZip, directoryName, null, false, suffix)
         {
 
         }
@@ -76,17 +77,23 @@ namespace pwiz.SkylineTestUtil
         /// <param name="directoryName">Name of directory to create in the test results</param>
         /// <param name="persistentFiles">List of files we'd like to extract in the ZIP file's directory for (re)use</param>
         /// <param name="isExtractHere">If false then the zip base name is used as the destination directory</param>
-        public TestFilesDir(TestContext testContext, string relativePathZip, string directoryName, string[] persistentFiles, bool isExtractHere = false)
+        /// <param name="suffix">Optional suffix to append to the directory name to differentiate tests using the same ZIP file</param>
+        public TestFilesDir(TestContext testContext, string relativePathZip, string directoryName, string[] persistentFiles, bool isExtractHere = false, string suffix = null)
         {
             TestContext = testContext;
             string zipBaseName = Path.GetFileNameWithoutExtension(relativePathZip);
             if (zipBaseName == null)
                 Assert.Fail("Null zip base name");  // Resharper
+            // Append suffix to zipBaseName if provided
+            if (!string.IsNullOrEmpty(suffix))
+            {
+                zipBaseName = zipBaseName + suffix;
+            }
             DirectoryName = GetExtractDir(directoryName, zipBaseName, false);   // Only persistent files can be extract here
             FullPath = TestContext.GetTestPath(DirectoryName);
             if (Directory.Exists(FullPath))
             {
-                Helpers.TryTwice(() => Directory.Delete(FullPath, true));
+                TryHelper.TryTwice(() => Directory.Delete(FullPath, true));
             }
             // where to place persistent (usually large, expensive to extract) files if any
             PersistentFiles = persistentFiles;
@@ -101,7 +108,7 @@ namespace pwiz.SkylineTestUtil
         {
             // record the size of the persistent directory after extracting
             var targetDir = IsExtractHere ? Path.Combine(PersistentFilesDir ?? string.Empty, DirectoryName) : PersistentFilesDir;
-            var persistentDirInfo = string.IsNullOrEmpty(PersistentFilesDir) ? null : new DirectoryInfo(targetDir);
+            var persistentDirInfo = string.IsNullOrEmpty(PersistentFilesDir) || !Directory.Exists(targetDir) ? null : new DirectoryInfo(targetDir);
             if (persistentDirInfo != null && Directory.Exists(PersistentFilesDir))
             {
                 var persistentFileInfos = persistentDirInfo.EnumerateFiles("*", SearchOption.AllDirectories).ToList();
@@ -340,6 +347,9 @@ namespace pwiz.SkylineTestUtil
 
         public static void CheckForFileLocks(string path, bool useDeletion = false)
         {
+            if (string.IsNullOrEmpty(path))
+                return;
+
             // Do a garbage collection in case any finalizer is supposed to release a file handle
             GC.Collect();
             GC.WaitForPendingFinalizers();
@@ -375,10 +385,17 @@ namespace pwiz.SkylineTestUtil
                 RemoveReadonlyFlags(path);
                 try
                 {
-                    Helpers.TryTwice(() => Directory.Delete(path, true));
+                    TryHelper.TryTwice(() => Directory.Delete(path, true));
                 }
                 catch (Exception e)
                 {
+                    // If the directory doesn't exist, it may have been deleted by another test/process.
+                    // This can happen when multiple tests use the same ZIP file and run in parallel.
+                    // Allow the test to continue in this case.
+                    if (!Directory.Exists(path))
+                    {
+                        return;
+                    }
                     throw new IOException($@"Directory.Delete(""{path}"",true) failed with ""{e.Message}""{GetProcessNamesLockingFile(path, e)}");
                 }
                 return;
@@ -392,14 +409,14 @@ namespace pwiz.SkylineTestUtil
 
             try
             {
-                Helpers.TryTwice(() => Directory.Move(path, guidName));
+                TryHelper.TryTwice(() => Directory.Move(path, guidName));
             }
             catch (IOException)
             {
                 // Useful for debugging. Exception names file that is locked.
                 try
                 {
-                    Helpers.TryTwice(() => Directory.Delete(path, true));
+                    TryHelper.TryTwice(() => Directory.Delete(path, true));
                     return; // If this succeeds then the lock was only temporary and we don't have a GUID folder to move back.
                 }
                 catch (Exception e)
@@ -411,14 +428,14 @@ namespace pwiz.SkylineTestUtil
             // Move the file back to where it was, and fail if this throws
             try
             {
-                Helpers.TryTwice(() => Directory.Move(guidName, path));
+                TryHelper.TryTwice(() => Directory.Move(guidName, path));
             }
             catch (IOException)
             {
                 try
                 {
                     // Useful for debugging. Exception names file that is locked.
-                    Helpers.TryTwice(() => Directory.Delete(guidName, true));
+                    TryHelper.TryTwice(() => Directory.Delete(guidName, true));
                 }
                 catch (Exception e)
                 {
@@ -435,8 +452,8 @@ namespace pwiz.SkylineTestUtil
         /// </summary>
         public static void RemoveReadonlyFlags(string path)
         {
-            string[] files = Directory.GetFiles(path);
-            string[] dirs = Directory.GetDirectories(path);
+            string[] files = GetSafeArray(() => Directory.GetFiles(path));
+            string[] dirs = GetSafeArray(() => Directory.GetDirectories(path));
 
             foreach (string file in files)
             {
@@ -446,6 +463,19 @@ namespace pwiz.SkylineTestUtil
             foreach (string dir in dirs)
             {
                 RemoveReadonlyFlags(dir);
+            }
+        }
+
+        private static string[] GetSafeArray(Func<string[]> getArray)
+        {
+            try
+            {
+                return getArray();
+            }
+            catch (Exception)
+            {
+                // Just skip anything that throws an exception
+                return Array.Empty<string>();
             }
         }
     }

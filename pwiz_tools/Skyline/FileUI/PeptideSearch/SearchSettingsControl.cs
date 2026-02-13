@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Viktoria Dorfer <viktoria.dorfer .at. fh-hagenberg.at>,
  *                  Bioinformatics Research Group, University of Applied Sciences Upper Austria
  *
@@ -89,13 +89,10 @@ namespace pwiz.Skyline.FileUI.PeptideSearch
 
         public void InitializeControls()
         {
-            LoadMassUnitEntries();
-
-            if (ImportPeptideSearch.IsFeatureDetection)
-                return;
-
             if (_searchEngine == null || ImportPeptideSearch.IsDIASearch && _searchEngine != SearchEngine.MSFragger)
                 searchEngineComboBox.SelectedIndex = ImportPeptideSearch.IsDIASearch ? 2 : 0; // currently only supported by MSFragger
+
+            LoadMassUnitEntries();
         }
 
         private void SearchEngineComboBox_SelectedIndexChanged(object sender, EventArgs e)
@@ -145,7 +142,10 @@ namespace pwiz.Skyline.FileUI.PeptideSearch
             MSAmanda,
             MSGFPlus,
             MSFragger,
+            Comet,
+            Tide,
             Hardklor
+
         }
 
         public SearchEngine SelectedSearchEngine
@@ -178,9 +178,28 @@ namespace pwiz.Skyline.FileUI.PeptideSearch
         private bool EnsureRequiredFilesDownloaded(IEnumerable<FileDownloadInfo> requiredFiles, Func<bool> extraDownloadAction = null)
         {
             var requiredFilesList = requiredFiles.ToList();
+
             var filesNotAlreadyDownloaded = SimpleFileDownloader.FilesNotAlreadyDownloaded(requiredFilesList).ToList();
             if (!filesNotAlreadyDownloaded.Any())
                 return true;
+
+            while(true)
+            {
+                var missingTools = SimpleFileDownloader.SearchToolsConfiguredButMissing(requiredFilesList).ToList();
+                if (missingTools.Any())
+                {
+                    var allTools = Settings.Default.SearchToolList.Select(i => i).ToList();
+                    foreach (var missingTool in missingTools)
+                    {
+                        var updatedItem = Settings.Default.SearchToolList.EditItem(this, missingTool, allTools, null);
+                        if (updatedItem == null)
+                            return false; // user canceled
+                        Settings.Default.SearchToolList.Add(updatedItem);
+                    }
+                }
+                else
+                    break;
+            }
 
             if (extraDownloadAction != null && !extraDownloadAction())
                 return false;
@@ -194,14 +213,14 @@ namespace pwiz.Skyline.FileUI.PeptideSearch
                 SimpleFileDownloaderDlg.Show(TopLevelControl,
                     string.Format(PeptideSearchResources.SearchSettingsControl_EnsureRequiredFilesDownloaded_Download__0_,
                         searchEngineComboBox.SelectedItem), filesNotAlreadyDownloaded);
+
+                return !SimpleFileDownloader.FilesNotAlreadyDownloaded(filesNotAlreadyDownloaded).Any();
             }
             catch (Exception exception)
             {
                 MessageDlg.ShowWithException(this, exception.Message, exception);
                 return false;
             }
-
-            return !SimpleFileDownloader.FilesNotAlreadyDownloaded(filesNotAlreadyDownloaded).Any();
         }
 
         private bool EnsureRequiredFilesDownloaded()
@@ -212,6 +231,10 @@ namespace pwiz.Skyline.FileUI.PeptideSearch
                     return EnsureRequiredFilesDownloaded(MsgfPlusSearchEngine.FilesToDownload);
                 case SearchEngine.MSFragger:
                     return EnsureRequiredFilesDownloaded(MsFraggerSearchEngine.FilesToDownload, ShowDownloadMsFraggerDialog);
+                case SearchEngine.Comet:
+                    return EnsureRequiredFilesDownloaded(CometSearchEngine.FilesToDownload);
+                case SearchEngine.Tide:
+                    return EnsureRequiredFilesDownloaded(TideSearchEngine.FilesToDownload);
                 case SearchEngine.Hardklor:
                 case SearchEngine.MSAmanda:
                     return true;
@@ -220,25 +243,29 @@ namespace pwiz.Skyline.FileUI.PeptideSearch
             }
         }
 
-        public static bool HasRequiredFilesDownloaded(SearchEngine searchEngine)
+        public static FileDownloadInfo[] GetSearchEngineRequiredFiles(SearchEngine searchEngine)
         {
-            FileDownloadInfo[] fileDownloadInfo;
             switch (searchEngine)
             {
                 case SearchEngine.Hardklor:
                 case SearchEngine.MSAmanda:
-                    return true;
+                    return Array.Empty<FileDownloadInfo>();
                 case SearchEngine.MSGFPlus:
-                    fileDownloadInfo = MsgfPlusSearchEngine.FilesToDownload;
-                    break;
+                    return MsgfPlusSearchEngine.FilesToDownload;
                 case SearchEngine.MSFragger:
-                    fileDownloadInfo = MsFraggerSearchEngine.FilesToDownload;
-                    break;
+                    return MsFraggerSearchEngine.FilesToDownload;
+                case SearchEngine.Comet:
+                    return CometSearchEngine.FilesToDownload;
+                case SearchEngine.Tide:
+                    return TideSearchEngine.FilesToDownload;
                 default:
                     throw new ArgumentOutOfRangeException();
             }
+        }
 
-            return !SimpleFileDownloader.FilesNotAlreadyDownloaded(fileDownloadInfo).Any();
+        public static bool HasRequiredFilesDownloaded(SearchEngine searchEngine)
+        {
+            return !SimpleFileDownloader.FilesNotAlreadyDownloaded(GetSearchEngineRequiredFiles(searchEngine)).Any();
         }
 
         private AbstractDdaSearchEngine InitSelectedSearchEngine()
@@ -257,6 +284,10 @@ namespace pwiz.Skyline.FileUI.PeptideSearch
                     else
                         dataType = ImportPeptideSearch.IsGpfData ? MsFraggerSearchEngine.DataType.dia_gpf : MsFraggerSearchEngine.DataType.dia;
                     return new MsFraggerSearchEngine(dataType);
+                case SearchEngine.Comet:
+                    return new CometSearchEngine(CutoffScore);
+                case SearchEngine.Tide:
+                    return new TideSearchEngine(CutoffScore);
                 case SearchEngine.Hardklor:
                     return new HardklorSearchEngine(ImportPeptideSearch);
                 default:
@@ -372,6 +403,7 @@ namespace pwiz.Skyline.FileUI.PeptideSearch
             {
                 return;
             }
+            LoadMassUnitEntries();
             LoadFragmentIonEntries();
             LoadMs2AnalyzerEntries();
 
@@ -388,15 +420,20 @@ namespace pwiz.Skyline.FileUI.PeptideSearch
 
         private void LoadMassUnitEntries()
         {
-            string[] entries = { @"Da", @"ppm" };
-            foreach (var cb in new [] { cbMS1TolUnit, cbMS2TolUnit })
+            void ClearAndRestoreComboBoxItems(ComboBox cb, string[] newEntries)
             {
-                int oldSelectedIndex = cb.SelectedIndex;
+                string oldSelection = cb.SelectedItem as string;
                 cb.Items.Clear();
-                cb.Items.AddRange(entries);
-                if (oldSelectedIndex > -1)
-                    cb.SelectedIndex = oldSelectedIndex;
+                cb.Items.AddRange(newEntries);
+                if (oldSelection != null && newEntries.Contains(oldSelection))
+                    cb.SelectedIndex = newEntries.ToList().IndexOf(oldSelection);
             }
+
+            var ms1Entries = ImportPeptideSearch.SearchEngine.PrecursorIonToleranceUnitTypes.Select(t => t.Name).ToArray();
+            ClearAndRestoreComboBoxItems(cbMS1TolUnit, ms1Entries);
+
+            var ms2Entries = ImportPeptideSearch.SearchEngine.FragmentIonToleranceUnitTypes.Select(t => t.Name).ToArray();
+            ClearAndRestoreComboBoxItems(cbMS2TolUnit, ms2Entries);
         }
 
         private void LoadFragmentIonEntries()
@@ -658,11 +695,27 @@ namespace pwiz.Skyline.FileUI.PeptideSearch
         {
             Assume.IsNotNull(ImportPeptideSearch.SearchEngine.AdditionalSettings);
 
-            KeyValueGridDlg.Show(PeptideSearchResources.SearchSettingsControl_Additional_Settings,
+            KeyValueGridDlg.Show(this, PeptideSearchResources.SearchSettingsControl_Additional_Settings,
                 ImportPeptideSearch.SearchEngine.AdditionalSettings,
                 (setting) => setting.Value.ToString(),
                 (value, setting) => setting.Value = value,
-                (value, setting) => setting.Validate(value));
+                (value, setting) => setting.Validate(value),
+                setting => setting.ValidValues);
+
+            InitializeControls();
+        }
+
+        private void btnEditSearchTools_Click(object sender, EventArgs e)
+        {
+            ShowSearchToolsDlg();
+        }
+
+        public void ShowSearchToolsDlg()
+        {
+            using var listbox = new ListBox();
+            var driverTools = new SettingsListBoxDriver<SearchTool>(listbox, Settings.Default.SearchToolList);
+            driverTools.LoadList();
+            driverTools.EditList();
         }
     }
 

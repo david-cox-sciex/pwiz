@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Brendan MacLean <brendanx .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -28,6 +28,7 @@ using System.Xml.Schema;
 using System.Xml.Serialization;
 using pwiz.Common.Collections;
 using pwiz.Common.SystemUtil;
+using pwiz.CommonMsData;
 using pwiz.Skyline.Model.Crosslinking;
 using pwiz.Skyline.Model.DocSettings.AbsoluteQuantification;
 using pwiz.Skyline.Model.Lib;
@@ -71,6 +72,7 @@ namespace pwiz.Skyline.Model.DocSettings
             }
             Quantification = QuantificationSettings.DEFAULT;
             ProteinAssociationSettings = proteinAssociationSettings;
+            Imputation = ImputationSettings.DEFAULT;
         }
 
         [TrackChildren]
@@ -102,6 +104,19 @@ namespace pwiz.Skyline.Model.DocSettings
 
         [TrackChildren]
         public ProteinAssociation.ParsimonySettings ProteinAssociationSettings { get; private set; }
+
+        [TrackChildren]
+        public ImputationSettings Imputation { get; private set; }
+
+        public bool HasLibraries { get { return Libraries != null && Libraries.HasLibraries; } }
+
+        public bool HasDocumentLibrary { get { return Libraries != null && Libraries.HasDocumentLibrary; } }
+
+        public bool HasBackgroundProteome { get { return BackgroundProteome != null && !BackgroundProteome.IsNone; } }
+
+        public bool HasRTPrediction { get { return Prediction != null && Prediction.RetentionTime != null; } }
+
+        public bool HasRTCalcPersisted { get { return HasRTPrediction && Prediction.RetentionTime.Calculator.PersistencePath != null; } }
 
         #region Property change methods
 
@@ -164,6 +179,11 @@ namespace pwiz.Skyline.Model.DocSettings
         public PeptideSettings ChangeParsimonySettings(ProteinAssociation.ParsimonySettings prop)
         {
             return ChangeProp(ImClone(this), im => im.ProteinAssociationSettings = prop);
+        }
+
+        public PeptideSettings ChangeImputation(ImputationSettings imputation)
+        {
+            return ChangeProp(ImClone(this), im => im.Imputation = imputation);
         }
 
         public PeptideSettings MergeDefaults(PeptideSettings defPep)
@@ -230,10 +250,12 @@ namespace pwiz.Skyline.Model.DocSettings
                 Integration = reader.DeserializeElement<PeptideIntegration>();
                 Quantification = reader.DeserializeElement<QuantificationSettings>();
                 ProteinAssociationSettings = reader.DeserializeElement<ProteinAssociation.ParsimonySettings>();
+                Imputation = reader.DeserializeElement<ImputationSettings>();
                 reader.ReadEndElement();
             }
 
-            Quantification = Quantification ?? QuantificationSettings.DEFAULT;
+            Quantification ??= QuantificationSettings.DEFAULT;
+            Imputation ??= ImputationSettings.DEFAULT;
             // Defer validation to the SrmSettings object
         }
 
@@ -254,6 +276,8 @@ namespace pwiz.Skyline.Model.DocSettings
                 writer.WriteElement(Quantification);
             if (!Equals(ProteinAssociationSettings, ProteinAssociation.ParsimonySettings.DEFAULT))
                 writer.WriteElement(ProteinAssociationSettings);
+            if (!Equals(Imputation, ImputationSettings.DEFAULT))
+                writer.WriteElement(Imputation);
         }
 
         #endregion
@@ -273,7 +297,8 @@ namespace pwiz.Skyline.Model.DocSettings
                    Equals(obj.Integration, Integration) &&
                    Equals(obj.BackgroundProteome, BackgroundProteome) &&
                    Equals(obj.Quantification, Quantification) &&
-                   Equals(obj.ProteinAssociationSettings, ProteinAssociationSettings);
+                   Equals(obj.ProteinAssociationSettings, ProteinAssociationSettings) &&
+                   Equals(obj.Imputation, Imputation);
         }
 
         public override bool Equals(object obj)
@@ -297,7 +322,7 @@ namespace pwiz.Skyline.Model.DocSettings
                 result = (result*397) ^ Integration.GetHashCode();
                 result = (result*397) ^ BackgroundProteome.GetHashCode();
                 result = (result*397) ^ Quantification.GetHashCode();
-                result = (result*397) ^ ProteinAssociationSettings?.GetHashCode() ?? 0;
+                result = (result*397) ^ (ProteinAssociationSettings?.GetHashCode() ?? 0);
                 return result;
             }
         }
@@ -1306,7 +1331,7 @@ namespace pwiz.Skyline.Model.DocSettings
             {
                 var modLosses = StaticModifications.SelectMany(mod => mod.Losses ?? (new List<FragmentLoss>())).ToList();
                 //Deduplicate the losses on formula
-                modLosses = modLosses.GroupBy(loss => loss.Formula, loss => loss, (formula, losses) => losses.FirstOrDefault()).ToList();
+                modLosses = modLosses.GroupBy(loss => new Tuple<string, int>(loss.Formula, loss.Charge), loss => loss, (formula, losses) => losses.FirstOrDefault()).ToList();
                 return ImmutableList.ValueOf(modLosses);
             }
         }
@@ -1926,7 +1951,6 @@ namespace pwiz.Skyline.Model.DocSettings
             HasDocumentLibrary = hasDocLib;
             LibrarySpecs = librarySpecs;
             Libraries = libraries;
-
             DoValidate();
         }
 
@@ -2260,7 +2284,7 @@ namespace pwiz.Skyline.Model.DocSettings
             return ChangeProp(ImClone(this), im => im.HasDocumentLibrary = prop);
         }
 
-        public PeptideLibraries ChangeDocumentLibraryPath(string path)
+        public PeptideLibraries ChangeDocumentLibraryPath(string path, ConnectionPool connectionPool)
         {
             var specs = new LibrarySpec[LibrarySpecs.Count];
             var libs = new Library[specs.Length];
@@ -2268,8 +2292,11 @@ namespace pwiz.Skyline.Model.DocSettings
             {
                 if (LibrarySpecs[i].IsDocumentLibrary)
                 {
-                    specs[i] = BiblioSpecLiteSpec.GetDocumentLibrarySpec(path);
-                    libs[i] = null;
+                    var newDocumentLibrarySpec = BiblioSpecLiteSpec.GetDocumentLibrarySpec(path);
+                    var newDocumentLibrary =
+                        (Libraries[i] as BiblioSpecLiteLibrary)?.ChangeLibrarySpec(newDocumentLibrarySpec, connectionPool);
+                    specs[i] = newDocumentLibrarySpec;
+                    libs[i] = newDocumentLibrary;
                 }
                 else
                 {
@@ -2283,21 +2310,38 @@ namespace pwiz.Skyline.Model.DocSettings
         public PeptideLibraries ChangeLibrarySpecs(IList<LibrarySpec> prop)
         {
             return ChangeProp(ImClone(this),
-                              im =>
-                                  {
-                                      im.LibrarySpecs = prop;
-                                      // Keep the libraries array in synch, reloading all libraries, if necessary.
-                                      // CONSIDER: Loop checking name matching?
-                                      if (im.Libraries.Count != prop.Count)
-                                      {
-                                          im.Libraries = new Library[prop.Count];
-                                      }
-                                  });
+                im =>
+                {
+                    // Keep the libraries array in sync
+                    // Try to preserve existing library instances where possible
+                    // Otherwise, set to null to indicate not yet loaded for LibraryManager to load
+                    im.Libraries = prop.Select((spec, i) =>
+                    {
+                        // Try to find existing library matching this spec by ID
+                        int specIndex = im.LibrarySpecs.IndexOf(existing =>
+                            ReferenceEquals(existing?.Id, spec.Id));
+                        if (specIndex == -1)
+                        {
+                            // If no matching spec, try finding a library with the right filename
+                            string fileName = Path.GetFileName(spec.FilePath);
+                            specIndex = im.Libraries.IndexOf(existing =>
+                                Equals(existing.FileNameHint, fileName));
+                            // Use it only if it resolves an unresolved library spec
+                            if (specIndex != -1 && im.LibrarySpecs[specIndex] != null)
+                                specIndex = -1;
+                        }
+                        return specIndex != -1 ? im.Libraries[specIndex] : null;
+                    }).ToArray();
+                    im.LibrarySpecs = prop;
+                });
         }        
 
         public PeptideLibraries ChangeLibraries(IList<Library> prop)
         {
-            return ChangeProp(ImClone(this), im => im.Libraries = prop);
+            return ChangeProp(ImClone(this), im =>
+            {
+                im.Libraries = prop;
+            });
         }
 
         public PeptideLibraries ChangeLibraries(IList<LibrarySpec> specs, IList<Library> libs)
@@ -2728,6 +2772,11 @@ namespace pwiz.Skyline.Model.DocSettings
         }
 
         #endregion
+
+        public LibrarySpec FindLibrarySpec(Identity identity)
+        {
+            return _librarySpecs.FirstOrDefault(librarySpec => ReferenceEquals(librarySpec.Id, identity));
+        }
     }
 
 
@@ -2748,7 +2797,7 @@ namespace pwiz.Skyline.Model.DocSettings
         [TrackChildren]
         public PeakScoringModelSpec PeakScoringModel { get; private set; }
         public bool IsSerializable { get { return IsAutoTrain || PeakScoringModel.IsTrained; } }
-        public MProphetResultsHandler ResultsHandler { get; private set; }
+        public ReintegrateResultsHandler ResultsHandler { get; private set; }
 
         #region Property change methods
 
@@ -2765,12 +2814,12 @@ namespace pwiz.Skyline.Model.DocSettings
         /// <summary>
         /// Changing this starts a peak reintegration when it is set on the document.
         /// </summary>
-        public PeptideIntegration ChangeResultsHandler(MProphetResultsHandler prop)
+        public PeptideIntegration ChangeResultsHandler(ReintegrateResultsHandler prop)
         {
             return ChangeProp(ImClone(this), im =>
             {
                 if (prop != null)
-                    im.PeakScoringModel = prop.ScoringModel;
+                    im.PeakScoringModel = prop.MProphetResultsHandler.ScoringModel;
                 im.ResultsHandler = prop;
             });
         }

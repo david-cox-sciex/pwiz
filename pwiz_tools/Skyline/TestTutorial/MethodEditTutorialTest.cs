@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Alana Killeen <killea .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -25,6 +25,7 @@ using System.Linq;
 using System.Threading;
 using System.Windows.Forms;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using pwiz.Common.SystemUtil;
 using pwiz.ProteomeDatabase.API;
 using pwiz.Skyline;
 using pwiz.Skyline.Alerts;
@@ -36,7 +37,6 @@ using pwiz.Skyline.Model;
 using pwiz.Skyline.Model.Lib;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.SettingsUI;
-using pwiz.Skyline.Util;
 using pwiz.Skyline.Util.Extensions;
 using pwiz.SkylineTestUtil;
 
@@ -203,6 +203,7 @@ namespace pwiz.SkylineTestTutorial
                 PauseForScreenShot<TransitionSettingsUI.LibraryTab>("Transition Settings - Library tab"); // Not L10N
                 OkDialog(transitionSettingsUI, transitionSettingsUI.OkDialog);
             }
+            RunUI(() => SkylineWindow.ShowFilesTreeForm(false));
             PauseForScreenShot<SequenceTreeForm>("Targets tree clipped from main window", null,
                 bmp => ClipTargets(bmp)); // Not L10N
 
@@ -399,6 +400,7 @@ namespace pwiz.SkylineTestTutorial
             var peptides = new List<PeptideDocNode>(Program.ActiveDocument.Peptides);
             Assert.AreEqual("K.AYLPVNESFGFTGELR.Q [770, 785]", peptides[peptides.Count - 1].Peptide.ToString()); // Not L10N
             RestoreViewOnScreen(21);
+            RunUI(() => SkylineWindow.ShowFilesTreeForm(false));
             PauseForScreenShot<SequenceTreeForm>("(fig. 1) - Added targets", null,
                 bmp => ClipTargets(bmp, 10, true, true)); // Not L10N
 

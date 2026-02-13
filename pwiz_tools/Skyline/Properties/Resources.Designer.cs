@@ -526,6 +526,16 @@ namespace pwiz.Skyline.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
+        public static System.Drawing.Bitmap ArdiaIcon {
+            get {
+                object obj = ResourceManager.GetObject("ArdiaIcon", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to {0} must contain a decimal value..
         /// </summary>
         public static string AreaChartPropertyDlg_ValidateDotpDecimal__0__must_contain_a_decimal_value {
@@ -657,6 +667,16 @@ namespace pwiz.Skyline.Properties {
         public static string AsyncChromatogramsGraph_Render__0___sample__1_ {
             get {
                 return ResourceManager.GetString("AsyncChromatogramsGraph_Render__0___sample__1_", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
+        public static System.Drawing.Bitmap AuditLog {
+            get {
+                object obj = ResourceManager.GetObject("AuditLog", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
             }
         }
         
@@ -913,6 +933,56 @@ namespace pwiz.Skyline.Properties {
             }
         }
         
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
+        public static System.Drawing.Bitmap CacheFile {
+            get {
+                object obj = ResourceManager.GetObject("CacheFile", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
+        public static System.Drawing.Bitmap ImsDB {
+            get {
+                object obj = ResourceManager.GetObject("ImsDB", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
+        public static System.Drawing.Bitmap IrtCalculator {
+            get {
+                object obj = ResourceManager.GetObject("IrtCalculator", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
+        public static System.Drawing.Bitmap OptDB {
+            get {
+                object obj = ResourceManager.GetObject("OptDB", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
+        public static System.Drawing.Bitmap ProtDB {
+            get {
+                object obj = ResourceManager.GetObject("ProtDB", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+
         /// <summary>
         ///   Looks up a localized string similar to Start value must be less than End value..
         /// </summary>
@@ -2783,11 +2853,11 @@ namespace pwiz.Skyline.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Error connecting to the Tool Store: {0}.
+        ///   Looks up a localized string similar to Error connecting to the Tool Store:.
         /// </summary>
-        public static string ConfigureToolsDlg_GetZipFromWeb_Error_connecting_to_the_Tool_Store___0_ {
+        public static string ConfigureToolsDlg_GetZipFromWeb_Error_connecting_to_the_Tool_Store_ {
             get {
-                return ResourceManager.GetString("ConfigureToolsDlg_GetZipFromWeb_Error_connecting_to_the_Tool_Store___0_", resourceCulture);
+                return ResourceManager.GetString("ConfigureToolsDlg_GetZipFromWeb_Error_connecting_to_the_Tool_Store_", resourceCulture);
             }
         }
         
@@ -2899,11 +2969,11 @@ namespace pwiz.Skyline.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Failed attempting to extract the tool from {0}.
+        ///   Looks up a localized string similar to Failed attempting to extract the tool.
         /// </summary>
-        public static string ConfigureToolsDlg_UnpackZipTool_Failed_attempting_to_extract_the_tool_from__0_ {
+        public static string ConfigureToolsDlg_UnpackZipTool_Failed_attempting_to_extract_the_tool {
             get {
-                return ResourceManager.GetString("ConfigureToolsDlg_UnpackZipTool_Failed_attempting_to_extract_the_tool_from__0_", resourceCulture);
+                return ResourceManager.GetString("ConfigureToolsDlg_UnpackZipTool_Failed_attempting_to_extract_the_tool", resourceCulture);
             }
         }
         
@@ -4126,6 +4196,16 @@ namespace pwiz.Skyline.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
+        public static System.Drawing.Bitmap Error {
+            get {
+                object obj = ResourceManager.GetObject("Error", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Error: {0}.
         /// </summary>
         public static string Error___0_ {
@@ -4454,6 +4534,16 @@ namespace pwiz.Skyline.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
+        public static System.Drawing.Bitmap FileMissing {
+            get {
+                object obj = ResourceManager.GetObject("FileMissing", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Could not replace file .
         /// </summary>
         public static string FileStreamManager_Commit_Could_not_replace_file_ {
@@ -4498,6 +4588,16 @@ namespace pwiz.Skyline.Properties {
         public static System.Drawing.Bitmap Folder {
             get {
                 object obj = ResourceManager.GetObject("Folder", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
+        public static System.Drawing.Bitmap FolderMissing {
+            get {
+                object obj = ResourceManager.GetObject("FolderMissing", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
             }
         }
@@ -6221,16 +6321,6 @@ namespace pwiz.Skyline.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Download canceled..
-        /// </summary>
-        public static string MultiFileAsynchronousDownloadClient_DownloadFileAsyncWithBroker_Download_canceled_ {
-            get {
-                return ResourceManager.GetString("MultiFileAsynchronousDownloadClient_DownloadFileAsyncWithBroker_Download_canceled" +
-                        "_", resourceCulture);
-            }
-        }
-        
-        /// <summary>
         ///   Looks up a localized string similar to Check the Modification tab in the Peptide Settings, the m/z types on the Prediction tab, or the m/z match tolerance on the Instrument tab of the Transition Settings..
         /// </summary>
         public static string MzMatchException_suggestion {
@@ -7613,15 +7703,6 @@ namespace pwiz.Skyline.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Calculating....
-        /// </summary>
-        public static string PeptidesPerProteinDlg_UpdateRemaining_Calculating___ {
-            get {
-                return ResourceManager.GetString("PeptidesPerProteinDlg_UpdateRemaining_Calculating___", resourceCulture);
-            }
-        }
-        
-        /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
         public static System.Drawing.Bitmap PeptideStandard {
@@ -8016,35 +8097,6 @@ namespace pwiz.Skyline.Properties {
         public static string PythonInstaller_DownloadPackages_Failed_to_download_the_following_packages_ {
             get {
                 return ResourceManager.GetString("PythonInstaller_DownloadPackages_Failed_to_download_the_following_packages_", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to Download failed. Check your network connection or contact Skyline developers..
-        /// </summary>
-        public static string PythonInstaller_DownloadPip_Download_failed__Check_your_network_connection_or_contact_Skyline_developers_ {
-            get {
-                return ResourceManager.GetString("PythonInstaller_DownloadPip_Download_failed__Check_your_network_connection_or_con" +
-                        "tact_Skyline_developers_", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to Check your network connection or contact the tool provider for installation support..
-        /// </summary>
-        public static string PythonInstaller_DownloadPython_Check_your_network_connection_or_contact_the_tool_provider_for_installation_support_ {
-            get {
-                return ResourceManager.GetString("PythonInstaller_DownloadPython_Check_your_network_connection_or_contact_the_tool_" +
-                        "provider_for_installation_support_", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to Download failed..
-        /// </summary>
-        public static string PythonInstaller_DownloadPython_Download_failed_ {
-            get {
-                return ResourceManager.GetString("PythonInstaller_DownloadPython_Download_failed_", resourceCulture);
             }
         }
         
@@ -8458,15 +8510,6 @@ namespace pwiz.Skyline.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to There was an error communicating with the server: .
-        /// </summary>
-        public static string RemoteSession_FetchContents_There_was_an_error_communicating_with_the_server__ {
-            get {
-                return ResourceManager.GetString("RemoteSession_FetchContents_There_was_an_error_communicating_with_the_server__", resourceCulture);
-            }
-        }
-        
-        /// <summary>
         ///   Looks up a localized string similar to Are you sure you want to remove these {0} peaks from {1} peptides?.
         /// </summary>
         public static string RemovePeptides_GetConfirmRemoveMessage_Are_you_sure_you_want_to_remove_these__0__peaks_from__1__peptides_ {
@@ -8530,6 +8573,16 @@ namespace pwiz.Skyline.Properties {
         public static System.Drawing.Bitmap Replicate {
             get {
                 object obj = ResourceManager.GetObject("Replicate", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
+        public static System.Drawing.Bitmap ReplicateMissing {
+            get {
+                object obj = ResourceManager.GetObject("ReplicateMissing", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
             }
         }
@@ -8622,24 +8675,6 @@ namespace pwiz.Skyline.Properties {
         public static string ReportSpecList_GetDefaults_Transition_Results {
             get {
                 return ResourceManager.GetString("ReportSpecList_GetDefaults_Transition_Results", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to &amp;Report:.
-        /// </summary>
-        public static string ReportSpecList_Label_Report {
-            get {
-                return ResourceManager.GetString("ReportSpecList_Label_Report", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to Edit Reports.
-        /// </summary>
-        public static string ReportSpecList_Title_Edit_Reports {
-            get {
-                return ResourceManager.GetString("ReportSpecList_Title_Edit_Reports", resourceCulture);
             }
         }
         
@@ -9067,25 +9102,6 @@ namespace pwiz.Skyline.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Check your network connection or contact the tool provider for installation support..
-        /// </summary>
-        public static string RInstaller_DownloadPackages_Check_your_network_connection_or_contact_the_tool_provider_for_installation_support_ {
-            get {
-                return ResourceManager.GetString("RInstaller_DownloadPackages_Check_your_network_connection_or_contact_the_tool_pro" +
-                        "vider_for_installation_support_", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to Download failed..
-        /// </summary>
-        public static string RInstaller_DownloadR_Download_failed_ {
-            get {
-                return ResourceManager.GetString("RInstaller_DownloadR_Download_failed_", resourceCulture);
-            }
-        }
-        
-        /// <summary>
         ///   Looks up a localized string similar to Downloading packages.
         /// </summary>
         public static string RInstaller_GetPackages_Downloading_packages {
@@ -9122,15 +9138,6 @@ namespace pwiz.Skyline.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Error: No internet connection..
-        /// </summary>
-        public static string RInstaller_InstallPackages_Error__No_internet_connection_ {
-            get {
-                return ResourceManager.GetString("RInstaller_InstallPackages_Error__No_internet_connection_", resourceCulture);
-            }
-        }
-        
-        /// <summary>
         ///   Looks up a localized string similar to Error: Package installation did not complete. Output logged to the Immediate Window..
         /// </summary>
         public static string RInstaller_InstallPackages_Error__Package_installation_did_not_complete__Output_logged_to_the_Immediate_Window_ {
@@ -9146,16 +9153,6 @@ namespace pwiz.Skyline.Properties {
         public static string RInstaller_InstallPackages_Error_Installing_Packages {
             get {
                 return ResourceManager.GetString("RInstaller_InstallPackages_Error_Installing_Packages", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to Installing R packages requires an internet connection. Please check your connection and try again.
-        /// </summary>
-        public static string RInstaller_InstallPackages_Installing_R_packages_requires_an_internet_connection__Please_check_your_connection_and_try_again {
-            get {
-                return ResourceManager.GetString("RInstaller_InstallPackages_Installing_R_packages_requires_an_internet_connection_" +
-                        "_Please_check_your_connection_and_try_again", resourceCulture);
             }
         }
         
@@ -9262,15 +9259,6 @@ namespace pwiz.Skyline.Properties {
         public static string RTLinearRegressionGraphPane_RTLinearRegressionGraphPane_Measured_Time {
             get {
                 return ResourceManager.GetString("RTLinearRegressionGraphPane_RTLinearRegressionGraphPane_Measured_Time", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to Calculating....
-        /// </summary>
-        public static string RTLinearRegressionGraphPane_UpdateGraph_Calculating___ {
-            get {
-                return ResourceManager.GetString("RTLinearRegressionGraphPane_UpdateGraph_Calculating___", resourceCulture);
             }
         }
         
@@ -9459,6 +9447,16 @@ namespace pwiz.Skyline.Properties {
             get {
                 object obj = ResourceManager.GetObject("Skyline_Daily", resourceCulture);
                 return ((System.Drawing.Icon)(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
+        public static System.Drawing.Bitmap Skyline_FilesTree {
+            get {
+                object obj = ResourceManager.GetObject("Skyline_FilesTree", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
             }
         }
         
@@ -10841,15 +10839,6 @@ namespace pwiz.Skyline.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Error downloading tool.
-        /// </summary>
-        public static string TestToolStoreClient_GetToolZipFile_Error_downloading_tool {
-            get {
-                return ResourceManager.GetString("TestToolStoreClient_GetToolZipFile_Error_downloading_tool", resourceCulture);
-            }
-        }
-        
-        /// <summary>
         ///   Looks up a localized string similar to Unable to determine format of delimiter separated value file.
         /// </summary>
         public static string TextUtil_DeterminDsvSeparator_Unable_to_determine_format_of_delimiter_separated_value_file {
@@ -11060,52 +11049,6 @@ namespace pwiz.Skyline.Properties {
         public static string ToolUpdatesDlg_btnUpdate_Click_Please_select_at_least_one_tool_to_update_ {
             get {
                 return ResourceManager.GetString("ToolUpdatesDlg_btnUpdate_Click_Please_select_at_least_one_tool_to_update_", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to Failed to download updates for the following packages.
-        /// </summary>
-        public static string ToolUpdatesDlg_DisplayDownloadSummary_Failed_to_download_updates_for_the_following_packages {
-            get {
-                return ResourceManager.GetString("ToolUpdatesDlg_DisplayDownloadSummary_Failed_to_download_updates_for_the_followin" +
-                        "g_packages", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to Failed to update the following tool.
-        /// </summary>
-        public static string ToolUpdatesDlg_DisplayInstallSummary_Failed_to_update_the_following_tool {
-            get {
-                return ResourceManager.GetString("ToolUpdatesDlg_DisplayInstallSummary_Failed_to_update_the_following_tool", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to Failed to update the following tools.
-        /// </summary>
-        public static string ToolUpdatesDlg_DisplayInstallSummary_Failed_to_update_the_following_tools {
-            get {
-                return ResourceManager.GetString("ToolUpdatesDlg_DisplayInstallSummary_Failed_to_update_the_following_tools", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to Successfully updated the following tool.
-        /// </summary>
-        public static string ToolUpdatesDlg_DisplayInstallSummary_Successfully_updated_the_following_tool {
-            get {
-                return ResourceManager.GetString("ToolUpdatesDlg_DisplayInstallSummary_Successfully_updated_the_following_tool", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to Successfully updated the following tools.
-        /// </summary>
-        public static string ToolUpdatesDlg_DisplayInstallSummary_Successfully_updated_the_following_tools {
-            get {
-                return ResourceManager.GetString("ToolUpdatesDlg_DisplayInstallSummary_Successfully_updated_the_following_tools", resourceCulture);
             }
         }
         
@@ -11377,15 +11320,6 @@ namespace pwiz.Skyline.Properties {
             get {
                 return ResourceManager.GetString("TransitionSettingsUI_OkDialog_Isotope_enrichment_settings_are_required_for_MS1_fi" +
                         "ltering_on_high_resolution_mass_spectrometers", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to rank {0}.
-        /// </summary>
-        public static string TransitionTreeNode_GetLabel_rank__0__ {
-            get {
-                return ResourceManager.GetString("TransitionTreeNode_GetLabel_rank__0__", resourceCulture);
             }
         }
         
@@ -11787,6 +11721,16 @@ namespace pwiz.Skyline.Properties {
         public static string VendorIssueHelper_ShowLibraryMissingExternalSpectrumFilesError {
             get {
                 return ResourceManager.GetString("VendorIssueHelper_ShowLibraryMissingExternalSpectrumFilesError", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
+        public static System.Drawing.Bitmap ViewFile {
+            get {
+                object obj = ResourceManager.GetObject("ViewFile", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
             }
         }
         

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Brendan MacLean <brendanx .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -27,11 +27,13 @@ using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Windows.Forms;
 using DigitalRune.Windows.Docking;
 using JetBrains.Annotations;
 using log4net;
+using pwiz.Common.Collections;
 using pwiz.Common.DataBinding;
 using pwiz.Common.DataBinding.Controls.Editor;
 using pwiz.Common.DataBinding.Documentation;
@@ -59,6 +61,7 @@ using pwiz.Skyline.Model.RetentionTimes;
 using pwiz.Skyline.Model.Tools;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.Controls;
+using pwiz.Skyline.Controls.FilesTree;
 using pwiz.Skyline.Controls.Lists;
 using pwiz.Skyline.FileUI.PeptideSearch;
 using pwiz.Skyline.Menus;
@@ -71,8 +74,8 @@ using pwiz.Skyline.Model.GroupComparison;
 using pwiz.Skyline.Model.Lists;
 using pwiz.Skyline.Model.Koina.Communication;
 using pwiz.Skyline.Model.Koina.Models;
-using pwiz.Skyline.Model.Results.RemoteApi;
-using pwiz.Skyline.Model.Results.RemoteApi.Ardia;
+using pwiz.CommonMsData.RemoteApi;
+using pwiz.CommonMsData.RemoteApi.Ardia;
 using pwiz.Skyline.Model.Results.Scoring;
 using pwiz.Skyline.Model.Serialization;
 using pwiz.Skyline.SettingsUI;
@@ -100,9 +103,11 @@ namespace pwiz.Skyline
             IToolMacroProvider,
             IModifyDocumentContainer,
             IRetentionScoreSource,
-            IRemoteAccountUserInteraction
+            IRemoteAccountUserInteraction,
+            IRemoteAccountStorage
     {
         private SequenceTreeForm _sequenceTreeForm;
+        private FilesTreeForm _filesTreeForm;
         private ImmediateWindow _immediateWindow;
 
         private SrmDocument _document;
@@ -123,6 +128,7 @@ namespace pwiz.Skyline
 
         public event EventHandler<DocumentChangedEventArgs> DocumentChangedEvent;
         public event EventHandler<DocumentChangedEventArgs> DocumentUIChangedEvent;
+        public event EventHandler<DocumentSavedEventArgs> DocumentSavedEvent;
 
         private readonly List<IProgressStatus> _listProgress;
         private readonly TaskbarProgress _taskbarProgress = new TaskbarProgress();
@@ -190,6 +196,7 @@ namespace pwiz.Skyline
             _autoTrainManager.Register(this);
             _immediateWindowWarningListener = new ImmediateWindowWarningListener(this);
             RemoteSession.RemoteAccountUserInteraction = this;
+            RemoteUrl.RemoteAccountStorage = this;
 
             // RTScoreCalculatorList.DEFAULTS[2].ScoreProvider
             //    .Attach(this);
@@ -201,7 +208,21 @@ namespace pwiz.Skyline
 
             // Begin ToolStore check for updates to currently installed tools, if any
             if (ToolStoreUtil.UpdatableTools(Settings.Default.ToolList).Any())
-                ActionUtil.RunAsync(() => ToolStoreUtil.CheckForUpdates(Settings.Default.ToolList.ToArray()), @"Check for tool updates");
+            {
+                ActionUtil.RunAsync(() => 
+                {
+                    try
+                    {
+                        ToolStoreUtil.CheckForUpdates(Settings.Default.ToolList.ToArray());
+                    }
+                    catch (Exception ex)
+                    {
+                        // Ignore network errors when checking for tool updates in background
+                        // The user will get proper error handling when they explicitly open the Tool Store
+                        Debug.WriteLine($@"Failed to check for tool updates: {ex.Message}");
+                    }
+                }, @"Check for tool updates");
+            }
 
             // Get placement values before changing anything.
             bool maximize = Settings.Default.MainWindowMaximized || Program.DemoMode;
@@ -221,7 +242,12 @@ namespace pwiz.Skyline
             if (maximize)
                 WindowState = FormWindowState.Maximized;
 
+            // As of April 2025, new Skyline projects are configured to:
+            //   1) Include tabs for Targets and Files trees
+            //   2) Make Targets tree active by default
             ShowSequenceTreeForm(true);
+            ShowFilesTreeForm(true);
+            _sequenceTreeForm.Activate();
 
             // Force the handle into existence before any background threads
             // are started by setting the initial document.  Otherwise, calls
@@ -253,6 +279,16 @@ namespace pwiz.Skyline
             else
             {
                 Settings.Default.UIMode = defaultUIMode; // OnShown() will ask user for it
+            }
+
+            // Push settings to an in-memory cache that can be read by ArdiaAccount since it cannot read Skyline settings directly.
+            // CONSIDER: this approach is rudimentary. Revisit and consider:
+            //              (1) moving all RemoteAccount-related config elsewhere
+            //              (2) doing #1 in the background
+            //              (3) the relationship between user.config models (ex: ArdiaRegistrationCodeEntry) and ArdiaAccount/Session
+            foreach (var kvPair in Settings.Default.ArdiaRegistrationCodeEntries)
+            {
+                ArdiaCredentialHelper.SetApplicationCode(kvPair.Key, kvPair.Value.ClientApplicationCode);
             }
         }
 
@@ -354,7 +390,7 @@ namespace pwiz.Skyline
             base.OnHandleCreated(e);
         }
 
-        public void Listen(EventHandler<DocumentChangedEventArgs> listener)
+        void IDocumentContainer.Listen(EventHandler<DocumentChangedEventArgs> listener)
         {
             DocumentChangedEvent += listener;
         }
@@ -457,6 +493,20 @@ namespace pwiz.Skyline
         public SequenceTree SequenceTree
         {
             get { return _sequenceTreeForm != null ? _sequenceTreeForm.SequenceTree : null; }
+        }
+
+        public FilesTree FilesTree
+        {
+            get { return _filesTreeForm != null ? _filesTreeForm.FilesTree : null; }
+        }
+
+        /// <summary>
+        /// Returns true if file system watching is completely shut down.
+        /// Useful for tests to wait for FileSystemWatchers to be fully disposed before cleanup.
+        /// </summary>
+        public bool IsFileSystemWatchingComplete()
+        {
+            return FilesTree?.IsFileSystemWatchingComplete() ?? true;
         }
 
         public ToolStripComboBox ComboResults
@@ -562,15 +612,6 @@ namespace pwiz.Skyline
                 docIdChanged = !ReferenceEquals(DocumentUI.Id, documentPrevious.Id);
             }
 
-            if (null != AlignToFile)
-            {
-                if (!settingsNew.HasResults || !settingsNew.MeasuredResults.Chromatograms
-                    .SelectMany(chromatograms=>chromatograms.MSDataFileInfos)
-                    .Any(chromFileInfo=>ReferenceEquals(chromFileInfo.FileId, AlignToFile)))
-                {
-                    AlignToFile = null;
-                }
-            }
             // Update results combo UI and sequence tree
             var e = new DocumentChangedEventArgs(documentPrevious, IsOpeningFile,
                 _sequenceTreeForm != null && _sequenceTreeForm.IsInUpdateDoc);
@@ -1129,6 +1170,7 @@ namespace pwiz.Skyline
             _autoTrainManager.ProgressUpdateEvent -= UpdateProgress;
             
             DestroyAllChromatogramsGraph();
+            DestroyFilesTreeForm(); // Stop FileSystemWatchers and their threads
             base.OnClosing(e);
 
             foreach (var control in new IMenuControlImplementer[] { _graphFullScan, _graphSpectrum, ViewMenu })
@@ -1149,8 +1191,9 @@ namespace pwiz.Skyline
 
             DatabaseResources.ReleaseAll(); // Let go of protDB SessionFactories
 
-            foreach (var loader in BackgroundLoaders)
+            foreach (var loader in BackgroundLoaders.ToList())
             {
+                loader.Unregister(this);
                 loader.ClearCache();
             }
 
@@ -1191,6 +1234,15 @@ namespace pwiz.Skyline
                 return;
 
             _undoManager.Undo();
+        }
+
+        /// <summary>
+        /// Undoes all changes back to a specific version.
+        /// </summary>
+        /// <param name="version">Document version number starting at 0 for the original document</param>
+        public void UndoAll(int version = 0)
+        {
+            _undoManager.UndoRestore(_undoManager.UndoCount - 1 - version);
         }
 
         public void UndoRestore(int index)
@@ -1782,7 +1834,6 @@ namespace pwiz.Skyline
             copyContextMenuItem.Enabled = enabled;
             cutContextMenuItem.Enabled = enabled;
             deleteContextMenuItem.Enabled = enabled;
-
             if (SequenceTree.SelectedNodes.Count > 0)
             {
                 expandSelectionContextMenuItem.Enabled = true;
@@ -1792,6 +1843,16 @@ namespace pwiz.Skyline
             {
                 expandSelectionContextMenuItem.Enabled = false;
                 expandSelectionContextMenuItem.Visible = false;
+            }
+            if (Settings.Default.UIMode == UiModes.PROTEOMIC)
+            {
+                expandSelectionProteinsContextMenuItem.Text = SeqNodeResources.PeptideGroupTreeNode_Heading_Protein;
+                expandSelectionPeptidesContextMenuItem.Text = PeptideDocNode.TITLE;
+            }
+            else
+            {
+                expandSelectionProteinsContextMenuItem.Text = SeqNodeResources.PeptideGroupTreeNode_Heading_Molecule_List;
+                expandSelectionPeptidesContextMenuItem.Text = PeptideDocNode.TITLE_MOLECULE;
             }
             pickChildrenContextMenuItem.Enabled = SequenceTree.CanPickChildren(SequenceTree.SelectedNode) && enabled;
             editNoteContextMenuItem.Enabled = (SequenceTree.SelectedNode is SrmTreeNode && enabled);
@@ -1951,6 +2012,9 @@ namespace pwiz.Skyline
         {
             TargetsTextFactor = textFactor;
             SequenceTree.OnTextZoomChanged();
+
+            // Null check is required since FilesTree is not visible by default and may not exist yet
+            FilesTree?.OnTextZoomChanged(); 
         }
 
         public void ChangeColorScheme()
@@ -2596,7 +2660,7 @@ namespace pwiz.Skyline
                     {
                         throw;
                     }
-                    MessageDlg.ShowWithException(this, TextUtil.LineSeparate(Resources.ShareListDlg_OkDialog_An_error_occurred, exception.Message), exception);
+                    MessageDlg.ShowWithException(parent ?? this, TextUtil.LineSeparate(Resources.ShareListDlg_OkDialog_An_error_occurred, exception.Message), exception);
                     return false;
                 }
                 finally
@@ -2762,6 +2826,19 @@ namespace pwiz.Skyline
             {
                 dlg.ShowDialog(this);
             }
+        }
+
+        private void searchToolsMenuItem_Click(object sender, EventArgs e)
+        {
+            ShowSearchToolsDlg();
+        }
+
+        public void ShowSearchToolsDlg()
+        {
+            using var listbox = new ListBox();
+            var driverTools = new SettingsListBoxDriver<SearchTool>(listbox, Settings.Default.SearchToolList);
+            driverTools.LoadList();
+            driverTools.EditList();
         }
 
         private void toolsMenu_DropDownOpening(object sender, EventArgs e)
@@ -3008,6 +3085,7 @@ namespace pwiz.Skyline
             if (_immediateWindow != null)
             {
                 _immediateWindow.Cleanup();
+                _immediateWindow.HideOnClose = false;
                 _immediateWindow.Close();
                 _immediateWindow = null;
             }
@@ -3074,6 +3152,18 @@ namespace pwiz.Skyline
             documentationViewer.Show(this);
         }
 
+        private void keyboardShortcutsHelpMenuItem_Click(object sender, EventArgs e)
+        {
+            ShowKeyboardShortcutsDocumentation();
+        }
+
+        public void ShowKeyboardShortcutsDocumentation()
+        {
+            DocumentationViewer documentationViewer = new DocumentationViewer(true);
+            documentationViewer.DocumentationHtml = KeyboardShortcutDocumentation.GenerateKeyboardShortcutHtml(menuMain);
+            documentationViewer.Show(this);
+        }
+
         private void otherDocsHelpMenuItem_Click(object sender, EventArgs e)
         {
             WebHelpers.OpenLink(this, @"https://skyline.ms/docs.url");
@@ -3111,6 +3201,67 @@ namespace pwiz.Skyline
                 about.ShowDialog(this);
             }
             
+        }
+
+        #endregion
+
+        #region FilesTree
+
+        public FilesTreeForm FilesTreeForm => _filesTreeForm;
+        public bool FilesTreeFormIsVisible => _filesTreeForm is { Visible: true };
+        public bool FilesTreeFormIsActivated => _filesTreeForm is { IsActivated: true };
+
+        public void ShowFilesTreeForm(bool show)
+        {
+            if (show)
+            {
+                if (_filesTreeForm != null)
+                {
+                    _filesTreeForm.Activate();
+                    _filesTreeForm.Focus();
+                }
+                // CONSIDER: instead of always docking Files on DockLeft, should Files
+                // find SequenceTree and add itself to the same panel?
+                else
+                {
+                    _filesTreeForm = CreateFilesTreeForm(null);
+                    _filesTreeForm.Show(dockPanel, DockState.DockLeft);
+                }
+            }
+            else
+            {
+                _filesTreeForm.Hide();
+            }
+        }
+
+        private FilesTreeForm CreateFilesTreeForm(string persistentString)
+        {
+            string expansionAndSelection = null;
+            if (persistentString != null)
+            {
+                var sepIndex = persistentString.IndexOf('|');
+                if (sepIndex != -1)
+                    expansionAndSelection = persistentString.Substring(sepIndex + 1);
+            }
+
+            _filesTreeForm = new FilesTreeForm(this);
+
+            if (expansionAndSelection != null)
+            {
+                _filesTreeForm.FilesTree.RestoreExpansionAndSelection(expansionAndSelection);
+            }
+
+            return _filesTreeForm;
+        }
+
+        public void DestroyFilesTreeForm()
+        {
+            if (_filesTreeForm != null)
+            {
+                _filesTreeForm.HideOnClose = false;
+                _filesTreeForm.Close();
+                _filesTreeForm = null;
+            }
         }
 
         #endregion
@@ -3164,6 +3315,14 @@ namespace pwiz.Skyline
                 int sepIndex = persistentString.IndexOf('|');
                 if (sepIndex != -1)
                     expansionAndSelection = persistentString.Substring(sepIndex + 1);
+
+                // If this string is not present, SequenceTree's view state was written with a Skyline version 
+                // pre-dating the FilesTree. So, show FilesTree as a tab behind SequenceTree. This check
+                // should run exactly once for any view file.
+                if (!persistentString.EndsWith(@"|" + FilesTree.FILES_TREE_SHOWN_ONCE_TOKEN))
+                {
+                    _shouldShowFilesTree = true;
+                }
             }             
             _sequenceTreeForm = new SequenceTreeForm(this, expansionAndSelection != null);
             _sequenceTreeForm.FormClosed += sequenceTreeForm_FormClosed;
@@ -3203,8 +3362,10 @@ namespace pwiz.Skyline
                 _sequenceTreeForm.SequenceTree.DragOver -= sequenceTree_DragOver;
                 _sequenceTreeForm.SequenceTree.DragEnter -= sequenceTree_DragDrop;
                 _sequenceTreeForm.ComboResults.SelectedIndexChanged -= comboResults_SelectedIndexChanged;
+                _sequenceTreeForm.HideOnClose = false;
                 _sequenceTreeForm.Close();
                 _sequenceTreeForm = null;
+                _shouldShowFilesTree = false;
             }
         }
 
@@ -3664,8 +3825,9 @@ namespace pwiz.Skyline
             SequenceTree.SelectedPaths = sourcePaths;
 
             var targetNode = Document.FindNode(pathTarget);
-            var pepGroup = (targetNode as PeptideGroupDocNode) ??
-                           (PeptideGroupDocNode) Document.FindNode(nodeDrop.SrmParent.Path);
+            string dropName = (targetNode is SrmDocument)
+                ? PropertyNames.DocumentNodeCounts
+                : AuditLogEntry.GetNodeName(Document, targetNode).ToString();
 
             ModifyDocument(SkylineResources.SkylineWindow_sequenceTree_DragDrop_Drag_and_drop, doc =>
                                                 {
@@ -3681,14 +3843,14 @@ namespace pwiz.Skyline
                 var entry = AuditLogEntry.CreateCountChangeEntry(MessageType.drag_and_dropped_node, MessageType.drag_and_dropped_nodes, docPair.NewDocumentType,
                     nodeSources.Select(node =>
                         AuditLogEntry.GetNodeName(docPair.OldDoc, node.Model).ToString()), nodeSources.Count,
-                    str => MessageArgs.Create(str, pepGroup.Name),
-                    MessageArgs.Create(nodeSources.Count, pepGroup.Name));
+                    str => MessageArgs.Create(str, dropName),
+                    MessageArgs.Create(nodeSources.Count, dropName));
 
                 if (nodeSources.Count > 1)
                 {
                     entry = entry.ChangeAllInfo(nodeSources.Select(node => new MessageInfo(MessageType.drag_and_dropped_node,
                         docPair.NewDocumentType,
-                        AuditLogEntry.GetNodeName(docPair.OldDoc, node.Model), pepGroup.Name)).ToList());
+                        AuditLogEntry.GetNodeName(docPair.OldDoc, node.Model), dropName)).ToList());
                 }
 
                 return entry;
@@ -3805,7 +3967,7 @@ namespace pwiz.Skyline
 
                 // Make sure the graphs for the result set are visible.
                 if (GetGraphChrom(name) != null || // Graph exists
-                    _listGraphChrom.Count >= MAX_GRAPH_CHROM) // Graph doesn't exist, presumably because there are more chromatograms than available graphs
+                    _listGraphChrom.Count >= Settings.Default.MaxChromatogramGraphs) // Graph doesn't exist, presumably because there are more chromatograms than available graphs
                 {
                     bool focus = ComboResults.Focused;
 
@@ -4092,7 +4254,6 @@ namespace pwiz.Skyline
                         Settings.Default.AutoShowAllChromatogramsGraph = ImportingResultsWindow.Visible;
                     ImportingResultsWindow.Finish();
                     if (!ImportingResultsWindow.HasErrors &&
-                        !ImportingResultsWindow.IsProgressFrozen() &&
                         Settings.Default.ImportResultsAutoCloseWindow)
                     {
                         DestroyAllChromatogramsGraph();
@@ -4360,7 +4521,7 @@ namespace pwiz.Skyline
                     // Here we just ignore all the versions attached to packages. 
                     IEnumerable<string> pythonPackages = packages.Select(p => p.Name);
 
-                    using (var dlg = new PythonInstaller(programPathContainer, pythonPackages, _skylineTextBoxStreamWriterHelper))
+                    using (var dlg = new PythonInstallerLegacyDlg(programPathContainer, pythonPackages, _skylineTextBoxStreamWriterHelper))
                     {
                         if (dlg.ShowDialog(this) == DialogResult.Cancel)
                             return null;
@@ -4383,16 +4544,33 @@ namespace pwiz.Skyline
 
         public void ShowList(string listName)
         {
-            var listForm = Application.OpenForms.OfType<ListGridForm>()
-                .FirstOrDefault(form => form.ListName == listName);
+            var listForm = FindListForm(listName);
             if (listForm != null)
             {
                 listForm.Activate();
                 return;
             }
-            listForm = new ListGridForm(this, listName);
+            listForm = CreateListForm(listName);
             var rectFloat = GetFloatingRectangleForNewWindow();
             listForm.Show(dockPanel, rectFloat);
+        }
+
+        private ListGridForm FindListForm(string listName)
+        {
+            return Application.OpenForms.OfType<ListGridForm>()
+                .FirstOrDefault(form => form.ListName == listName);
+        }
+
+        private ListGridForm CreateListForm(string listName)
+        {
+            if (string.IsNullOrEmpty(listName))
+            {
+                var listDefault = Document.Settings.DataSettings.Lists.FirstOrDefault();
+                if (listDefault == null)
+                    return null;
+                listName = listDefault.ListName;
+            }
+            return FindListForm(listName) ?? new ListGridForm(this, listName);
         }
 
         public void SelectElement(ElementRef elementRef)
@@ -4548,6 +4726,7 @@ namespace pwiz.Skyline
             MarkQuantitative(true);
         }
 
+        [MethodImpl(MethodImplOptions.NoOptimization)]
         public void MarkQuantitative(bool quantitative)
         {
             lock (GetDocumentChangeLock())
@@ -4695,6 +4874,8 @@ namespace pwiz.Skyline
             {
                 case ArdiaAccount ardia:
                 {
+                    // ISSUE: if ArdiaLoginDlg fails, callers receive no error. When debugging tests, use breakpoints to look at ArdiaLoginDlg before it closes.
+                    //        For example, this happens if the remote server URL cannot be found.
                     using var loginDlg = new ArdiaLoginDlg(ardia);
                     if (DialogResult.Cancel == loginDlg.ShowDialog(this))
                         throw new OperationCanceledException();
@@ -4782,6 +4963,29 @@ namespace pwiz.Skyline
             {
                 throw new ApplicationException(@"Crash Skyline Menu Item Clicked");
             }).Start();
+        }
+
+        public int DocumentSavedEventSubscriberCount()
+        {
+            return DocumentSavedEvent != null ? DocumentSavedEvent.GetInvocationList().Length : 0;
+        }
+
+        public IEnumerable<RemoteAccount> GetRemoteAccounts()
+        {
+            return Settings.Default.RemoteAccountList;
+        }
+
+        /// <summary>
+        /// Reset the token for all Ardia-type accounts in <see cref="Settings.RemoteAccountList"/>.
+        /// Used only in tests.
+        /// </summary>
+        // CONSIDER: this should go elsewhere. Maybe when CommonMsData supports RemoteAccountList
+        public void ClearArdiaAccountTokens()
+        {
+            Settings.Default.RemoteAccountList.
+                Where(a => a.AccountType == RemoteAccountType.ARDIA).
+                Cast<ArdiaAccount>().
+                ForEach(ArdiaCredentialHelper.ClearToken);
         }
     }
 }

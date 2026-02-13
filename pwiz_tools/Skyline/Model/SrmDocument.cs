@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Brendan MacLean <brendanx .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -54,9 +54,9 @@ using System.Xml;
 using System.Xml.Schema;
 using System.Xml.Serialization;
 using pwiz.Common.Chemistry;
+using pwiz.Common.Collections;
 using pwiz.Common.SystemUtil;
-using pwiz.Skyline.Controls.Graphs;
-using pwiz.Skyline.Controls.SeqNode;
+using pwiz.CommonMsData;
 using pwiz.Skyline.Model.AuditLog;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.DocSettings.Extensions;
@@ -188,6 +188,31 @@ namespace pwiz.Skyline.Model
         /// True when the document change is caused by opening a file
         /// </summary>
         public bool IsOpeningFile { get; private set; }
+    }
+
+    /// <summary>
+    /// EventArgs supplied with the <see cref="SkylineWindow.DocumentSavedEvent"/>.
+    /// The document path refers to the saved location. A boolean is supplied to
+    /// allow changing behavior if this document was saved for the first time.
+    /// </summary>
+    public class DocumentSavedEventArgs : EventArgs
+    {
+        public DocumentSavedEventArgs(string documentPath, bool isSaveAs = false)
+        {
+            DocumentFilePath = documentPath;
+            IsSaveAs = isSaveAs;
+        }
+
+        /// <summary>
+        /// Path where the document was saved.
+        /// </summary>
+        public string DocumentFilePath { get; }
+
+        /// <summary>
+        /// True when this document is saved to a new location. This happens when a new document
+        /// is saved for the first time or an existing document is saved to a new path.
+        /// </summary>
+        public bool IsSaveAs { get; }
     }
 
     /// <summary>
@@ -576,7 +601,7 @@ namespace pwiz.Skyline.Model
             if (rtRegression == null || rtRegression.Calculator == null)
                 return new HashSet<Target>();
 
-            var regressionPeps = rtRegression.Calculator.GetStandardPeptides(Peptides.Select(
+            var regressionPeps = rtRegression.Calculator.GetStandardPeptides(Molecules.Select(
                 nodePep => Settings.GetModifiedSequence(nodePep)));
             return new HashSet<Target>(regressionPeps);
         }
@@ -618,7 +643,7 @@ namespace pwiz.Skyline.Model
                     yield return whyNot;
                 if ((whyNot = OptimizationDbManager.IsNotLoadedDocumentExplained(this)) != null)
                     yield return whyNot;
-                if ((whyNot = DocumentRetentionTimes.IsNotLoadedExplained(Settings)) != null)
+                if ((whyNot = DocumentRetentionTimes.IsNotLoadedExplained(this)) != null)
                     yield return whyNot;
                 if ((whyNot = IonMobilityLibraryManager.IsNotLoadedDocumentExplained(this)) != null)
                     yield return whyNot;
@@ -1152,15 +1177,9 @@ namespace pwiz.Skyline.Model
                 .Any(mods => mods.Modifications.Count > 0);
             if (!hasHeavyModifications && HasSmallMolecules)
             {
-                foreach (var molecule in Molecules)
-                {
-                    if (molecule.TransitionGroups.Any(group =>
-                        !ReferenceEquals(group.TransitionGroup.LabelType, IsotopeLabelType.light)))
-                    {
-                        hasHeavyModifications = true;
-                        break;
-                    }
-                }
+                hasHeavyModifications = Molecules
+                    .SelectMany(mol => mol?.TransitionGroups ?? Array.Empty<TransitionGroupDocNode>())
+                    .Any(group => !ReferenceEquals(group.TransitionGroup.LabelType, IsotopeLabelType.light));
             }
             if (hasHeavyModifications == settings.PeptideSettings.Modifications.HasHeavyModifications)
             {
@@ -1296,9 +1315,25 @@ namespace pwiz.Skyline.Model
                         var probeString = Encoding.UTF8.GetString(probeBuf);
                         if (!probeString.Contains(@"<srm_settings"))
                         {
-                            explained = string.Format(
-                                ModelResources.SkylineWindow_OpenFile_The_file_you_are_trying_to_open____0____does_not_appear_to_be_a_Skyline_document__Skyline_documents_normally_have_a___1___or___2___filename_extension_and_are_in_XML_format_,
-                                path, EXT, SrmDocumentSharing.EXT_SKY_ZIP);
+                            if (!PathEx.HasExtension(path, EXT) &&
+                                !PathEx.HasExtension(path, SrmDocumentSharing.EXT_SKY_ZIP))
+                            {
+                                // Check if this is a known mass spec data file format
+                                var sourceType = DataSourceUtil.GetSourceType(path);
+                                if (!Equals(sourceType, DataSourceUtil.UNKNOWN_TYPE) &&
+                                    !Equals(sourceType, DataSourceUtil.FOLDER_TYPE))
+                                {
+                                    explained = string.Format(
+                                        ModelResources.SrmDocument_IsSkylineFile_The_file___0___appears_to_be_a__1__mass_spectrometry_data_file,
+                                        Path.GetFileName(path), sourceType);
+                                }
+                            }
+                            if (string.IsNullOrEmpty(explained))
+                            {
+                                explained = string.Format(
+                                    ModelResources.SkylineWindow_OpenFile_The_file_you_are_trying_to_open____0____does_not_appear_to_be_a_Skyline_document__Skyline_documents_normally_have_a___1___or___2___filename_extension_and_are_in_XML_format_,
+                                    path, EXT, SrmDocumentSharing.EXT_SKY_ZIP);
+                            }
                         }
                     }
                 }
@@ -1578,7 +1613,7 @@ namespace pwiz.Skyline.Model
                 throw new InvalidDataException(ModelResources.SrmDocument_AddIrtPeptides_Must_have_an_active_iRT_calculator_to_add_iRT_peptides);
             }
             var dbPath = calculator.DatabasePath;
-            var db = File.Exists(dbPath) ? IrtDb.GetIrtDb(dbPath, null) : IrtDb.CreateIrtDb(dbPath);
+            var db = File.Exists(dbPath) ? IrtDb.GetIrtDb(dbPath) : IrtDb.CreateIrtDb(dbPath);
             var oldPeptides = db.ReadPeptides().Select(p => new DbIrtPeptide(p)).ToList();
             var peptidesCombined = DbIrtPeptide.FindNonConflicts(oldPeptides, irtPeptides, progressMonitor, out var conflicts);
             if (peptidesCombined == null)
@@ -1812,19 +1847,18 @@ namespace pwiz.Skyline.Model
                 var nodeGroup = (TransitionGroupDocNode) FindNode(groupPath);
                 if (nodeGroup == null)
                     throw new IdentityNotFoundException(groupPath.Child);
-                var lookupSequence = nodePep.SourceUnmodifiedTarget;
-                var lookupMods = nodePep.SourceExplicitMods;
-                double[] retentionTimes;
-                Settings.TryGetRetentionTimes(lookupSequence, nodeGroup.TransitionGroup.PrecursorAdduct, lookupMods,
-                                              filePath, out _, out retentionTimes);
+                var targets = Settings.GetTargets(nodePep).ToList();
+                var retentionTimes = Settings.GetRetentionTimes(filePath, targets);
+                Settings.TryGetRetentionTimes(nodePep, nodeGroup.TransitionGroup.PrecursorAdduct, filePath, out _, out retentionTimes);
                 if(ContainsTime(retentionTimes, startTime.Value, endTime.Value))
                 {
                     identified = PeakIdentification.TRUE;
                 }
                 else
                 {
-                    var alignedRetentionTimes = Settings.GetAlignedRetentionTimes(filePath,
-                        lookupSequence, lookupMods);
+                    ChromatogramSet chromatogramSet = null;
+                    MeasuredResults?.TryGetChromatogramSet(nameSet, out chromatogramSet, out _);
+                    var alignedRetentionTimes = Settings.GetAlignedRetentionTimes(chromatogramSet, filePath, Settings.GetTargets(nodePep).ToList());
                     identified = ContainsTime(alignedRetentionTimes, startTime.Value, endTime.Value)
                         ? PeakIdentification.ALIGNED
                         : PeakIdentification.FALSE;
@@ -1863,13 +1897,13 @@ namespace pwiz.Skyline.Model
             {
                 throw new ArgumentOutOfRangeException(string.Format(
                     ModelResources.SrmDocument_ChangePeak_No_results_found_for_the_precursor__0__in_the_replicate__1__,
-                    TransitionGroupTreeNode.GetLabel(find.TransitionGroup, find.PrecursorMz, string.Empty), nameSet));
+                    TransitionGroupDocNode.GetLabel(find.TransitionGroup, find.PrecursorMz, string.Empty), nameSet));
             }
             else if (find.IndexInfo == -1)
             {
                 throw new ArgumentOutOfRangeException(string.Format(
                     ModelResources.SrmDocument_ChangePeak_No_results_found_for_the_precursor__0__in_the_file__1__,
-                    TransitionGroupTreeNode.GetLabel(find.TransitionGroup, find.PrecursorMz, string.Empty), filePath));
+                    TransitionGroupDocNode.GetLabel(find.TransitionGroup, find.PrecursorMz, string.Empty), filePath));
             }
 
             var nodeGroupNew = change(find.NodeGroup, find.ChromInfo, Settings.TransitionSettings.Instrument.MzMatchTolerance, find.IndexSet, find.FileId,
@@ -2082,41 +2116,39 @@ namespace pwiz.Skyline.Model
         public IEnumerable<ChromatogramSet> GetSynchronizeIntegrationChromatogramSets()
         {
             if (!Settings.HasResults)
-                yield break;
+                return Array.Empty<ChromatogramSet>();
 
             if (Settings.TransitionSettings.Integration.SynchronizedIntegrationAll)
             {
-                // Synchronize all
-                foreach (var chromSet in MeasuredResults.Chromatograms)
-                    yield return chromSet;
-                yield break;
+                return MeasuredResults.Chromatograms;
             }
 
             var targets = Settings.TransitionSettings.Integration.SynchronizedIntegrationTargets?.ToHashSet();
             if (targets == null || targets.Count == 0)
             {
                 // Synchronize none
-                yield break;
+                return Array.Empty<ChromatogramSet>();
             }
 
             var groupBy = Settings.TransitionSettings.Integration.SynchronizedIntegrationGroupBy;
             if (string.IsNullOrEmpty(groupBy))
             {
                 // Synchronize individual replicates
-                foreach (var chromSet in MeasuredResults.Chromatograms.Where(chromSet => targets.Contains(chromSet.Name)))
-                    yield return chromSet;
-                yield break;
+                return MeasuredResults.Chromatograms.Where(chromSet => targets.Contains(chromSet.Name));
+            }
+            ReplicateValue replicateValue = ReplicateValue.FromPersistedString(Settings, Settings.TransitionSettings.Integration.SynchronizedIntegrationGroupBy);
+            if (replicateValue == null)
+            {
+                // Annotation no longer exists
+                return Array.Empty<ChromatogramSet>();
             }
 
             // Synchronize by annotation
-            var replicateValue = ReplicateValue.FromPersistedString(Settings, groupBy);
             var annotationCalculator = new AnnotationCalculator(this);
-            foreach (var chromSet in MeasuredResults.Chromatograms)
-            {
-                var value = replicateValue.GetValue(annotationCalculator, chromSet);
-                if (targets.Contains(Convert.ToString(value ?? string.Empty, CultureInfo.InvariantCulture)))
-                    yield return chromSet;
-            }
+            return MeasuredResults.Chromatograms.Where(chromatogramSet =>
+                targets.Contains(Convert.ToString(
+                    replicateValue.GetValue(annotationCalculator, chromatogramSet) ?? string.Empty,
+                    CultureInfo.InvariantCulture)));
         }
 
         private object _referenceId = new object();
@@ -2177,6 +2209,8 @@ namespace pwiz.Skyline.Model
             Settings = Settings.ChangePeptideSettings(Settings.PeptideSettings.ChangeIntegration(
                 Settings.PeptideSettings.Integration.ChangeScoreQValueMap(
                     ScoreQValueMap.FromMoleculeGroups(MoleculeGroups))));
+            Settings = Settings.ChangeDocumentRetentionTimes(Settings.DocumentRetentionTimes
+                .UpdateFromDeserializedDocument(this));
 
             SetDocumentType(); // Note proteomic vs small_molecules vs mixed
 
@@ -2255,7 +2289,7 @@ namespace pwiz.Skyline.Model
         public void SerializeToFile(string tempName, string displayName, SkylineVersion skylineVersion, IProgressMonitor progressMonitor)
         {
             string hash;
-            using (var writer = new XmlTextWriter(HashingStream.CreateWriteStream(tempName), Encoding.UTF8))
+            using (var writer = new XmlTextWriter(HashingStream.CreateWriteStream(tempName), new UTF8Encoding(false))) // UTF-8 without BOM
             {
                 writer.Formatting = Formatting.Indented;
                 hash = Serialize(writer, displayName, skylineVersion, progressMonitor);
@@ -2270,7 +2304,7 @@ namespace pwiz.Skyline.Model
                 auditLog.WriteToFile(auditLogPath, hash, skylineVersion.SrmDocumentVersion);
             }
             else if (File.Exists(auditLogPath))
-                Helpers.TryTwice(() => File.Delete(auditLogPath));
+                TryHelper.TryTwice(() => File.Delete(auditLogPath));
         }
 
         public string Serialize(XmlTextWriter writer, string displayName, SkylineVersion skylineVersion, IProgressMonitor progressMonitor)
@@ -2332,7 +2366,7 @@ namespace pwiz.Skyline.Model
             TransitionGroupDocNode nodeGroup, TransitionDocNode nodeTran, CollisionEnergyRegression regression, int step)
         {
             var ce = GetExplicitCollisionEnergy(nodeGroup, nodeTran);
-            if (regression != null)
+            if (regression != null && !Equals(regression, CollisionEnergyList.NONE))
             {
                 // If still no explicit CE value found the CE is calculated using the provided regression, if any.
                 if (!ce.HasValue)
@@ -2635,67 +2669,6 @@ namespace pwiz.Skyline.Model
         #endregion
 
         /// <summary>
-        /// Compares documents, returns null if equal, or a text diff if not
-        /// </summary>
-        public static string EqualsVerbose(SrmDocument expected, SrmDocument actual)
-        {
-            if (ReferenceEquals(null, expected))
-            {
-                return ReferenceEquals(null, actual) ? null : @"expected a null document";
-            }
-            if (ReferenceEquals(null, actual))
-            {
-                return @"expected a non-null document";
-            }
-            if (expected.Equals(actual))
-            {
-                return null;
-            }
-
-            string textExpected;
-            using (var stringWriterExpected = new StringWriter())
-            using (var xmlWriterExpected = new XmlTextWriter(stringWriterExpected))
-            {
-                xmlWriterExpected.Formatting = Formatting.Indented;
-                expected.Serialize(xmlWriterExpected, null, SkylineVersion.CURRENT, null);
-                textExpected = stringWriterExpected.ToString();
-            }
-            string textActual;
-            using (var stringWriterActual = new StringWriter())
-            using (var xmlWriterActual = new XmlTextWriter(stringWriterActual))
-            {
-                xmlWriterActual.Formatting = Formatting.Indented;
-                actual.Serialize(xmlWriterActual, null, SkylineVersion.CURRENT, null);
-                textActual = stringWriterActual.ToString();
-            }
-
-            var linesExpected = textExpected.Split('\n');
-            var linesActual = textActual.Split('\n');
-            int lineNumber;
-            for (lineNumber = 0; lineNumber < linesExpected.Length && lineNumber < linesActual.Length; lineNumber++)
-            {
-                var lineExpected = linesExpected[lineNumber];
-                var lineActual = linesActual[lineNumber];
-                if (!Equals(lineExpected, lineActual))
-                {
-                    return $@"Expected XML representation of document does not match actual at line {lineNumber}\n" +
-                           $@"Expected line:\n{lineExpected}\n" +
-                           $@"Actual line:\n{lineActual}\n" +
-                           $@"Expected full document:\n{textExpected}\n" +
-                           $@"Actual full document:\n{textActual}\n";
-                }
-            }
-            if (lineNumber < linesExpected.Length || lineNumber < linesActual.Length)
-            {
-                return @"Expected XML representation of document is not the same length as actual\n"+
-                       $@"Expected full document:\n{textExpected}\n"+
-                       $@"Actual full document:\n{textActual}\n";
-            }
-
-            return @"Expected document does not match actual, but the difference does not appear in the XML representation. Difference may be in a library instead.";
-        }
-
-        /// <summary>
         /// If the passed in IdentityPath is below the specified Level, then return the ancestor IdentityPath
         /// at the specified level.
         /// If the passed in IdentityPath is above the specified level, then return all descendent IdentityPaths
@@ -2770,6 +2743,15 @@ namespace pwiz.Skyline.Model
             {
                 return (base.GetHashCode()*397) ^ Settings.GetHashCode();
             }
+        }
+
+        public override string ToString()
+        {
+            // For debugging convenience, not user-facing
+            // These are the same values in the same order used to summarize the document in the UI (lower right corner of Skyline window).
+            // That's also the same values and order as used in CheckDocumentState() calls.
+            // This is terse by design, for ease of display in debugger.
+            return $@"doc {MoleculeGroupCount},{MoleculeCount},{MoleculeTransitionGroupCount},{MoleculeTransitionCount}"; 
         }
 
         #endregion

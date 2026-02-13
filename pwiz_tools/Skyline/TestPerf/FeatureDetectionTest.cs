@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Original author: Brian Pratt <bspratt .at. proteinms.net >
  *
  * Copyright 2022 University of Washington - Seattle, WA
@@ -22,6 +22,8 @@ using System.IO;
 using System.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using pwiz.Common.Chemistry;
+using pwiz.Common.SystemUtil;
+using pwiz.CommonMsData;
 using pwiz.Skyline.Controls.Databinding;
 using pwiz.Skyline.EditUI;
 using pwiz.Skyline.FileUI;
@@ -29,7 +31,6 @@ using pwiz.Skyline.FileUI.PeptideSearch;
 using pwiz.Skyline.Model;
 using pwiz.Skyline.Model.DdaSearch;
 using pwiz.Skyline.Model.DocSettings;
-using pwiz.Skyline.Model.Results;
 using pwiz.Skyline.Util;
 using pwiz.SkylineTestUtil;
 
@@ -81,7 +82,7 @@ namespace TestPerf
             public bool HasMissingDependencies { get; private set; }
         }
 
-        [TestMethod, NoUnicodeTesting(TestExclusionReason.HARDKLOR_UNICODE_ISSUES), NoParallelTesting(TestExclusionReason.RESOURCE_INTENSIVE)]
+        [TestMethod, NoParallelTesting(TestExclusionReason.RESOURCE_INTENSIVE)]
         public void TestFeatureDetectionTutorialFuture()
         {
             TestFilesZipPaths = new[]
@@ -191,6 +192,17 @@ namespace TestPerf
                 {
                     SkylineWindow.NewDocument(true);
                 });
+
+                // There was an issue with TransitionSettings.Libraries.MinIonCount being applied
+                // to detected features, which (uniquely) use spectral libraries without any fragments.
+                // N.B. that change should be revisited if we ever enable the Hardklor/Bullseye
+                // association of fragments with features.
+                var transitionSettings = SkylineWindow.Document.Settings.TransitionSettings;
+                var transitionLibraries = transitionSettings.Libraries.ChangeMinIonCount(3);
+                var docIonCount = SkylineWindow.Document.ChangeSettings(
+                    SkylineWindow.Document.Settings.ChangeTransitionSettings(
+                        transitionSettings.ChangeLibraries(transitionLibraries)));
+                RunUI(() => SkylineWindow.SetDocument(docIonCount, SkylineWindow.Document));
             }
 
             RunUI(() =>
