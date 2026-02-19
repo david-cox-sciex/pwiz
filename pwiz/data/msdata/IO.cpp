@@ -1643,10 +1643,7 @@ void writeMzMLbExtra<BinaryDataArray>(stream<Connection_mzMLb>* mzMLb_os, string
             else dataset += "_numpress_slof";
 
             offset = (*mzMLb_os)->seek(dataset, 0, std::ios_base::cur);
-            if (encoded_size > 0)
-            {
-                (*mzMLb_os)->write_opaque(dataset, (const unsigned char*)&encoded[0], encoded_size);
-            }
+            (*mzMLb_os)->write_opaque(dataset, (const unsigned char*)&encoded[0], encoded_size);
         }
         else if (usedConfig.precision == BinaryDataEncoder::Precision_32)
         {
@@ -1841,10 +1838,7 @@ void writeMzMLbExtra<IntegerDataArray>(stream<Connection_mzMLb>* mzMLb_os, strin
             else dataset += "_numpress_slof";
 
             offset = (*mzMLb_os)->seek(dataset, 0, std::ios_base::cur);
-            if (encoded_size > 0)
-            {
-                (*mzMLb_os)->write_opaque(dataset, (const unsigned char*)&encoded[0], encoded_size);
-            }
+            (*mzMLb_os)->write_opaque(dataset, (const unsigned char*)&encoded[0], encoded_size);
         }
         else
         {

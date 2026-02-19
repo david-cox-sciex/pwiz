@@ -125,9 +125,6 @@ PWIZ_API_DECL ChromatogramPtr ChromatogramList_ABI::chromatogram(size_t index, D
                 for (int iii=1; iii <= experimentCount; ++iii)
                 {
                     ExperimentPtr msExperiment = experimentsMap_.find(pair<int, int>(ii, iii))->second;
-                    
-                    if (config_.globalChromatogramsAreMs1Only && msExperiment->getExperimentType() != MS)
-                        continue;
 
                     int msLevel = msExperiment->getMsLevel(1);
 
@@ -181,9 +178,6 @@ PWIZ_API_DECL ChromatogramPtr ChromatogramList_ABI::chromatogram(size_t index, D
                 for (int iii = 1; iii <= experimentCount; ++iii)
                 {
                     ExperimentPtr msExperiment = experimentsMap_.find(pair<int, int>(ii, iii))->second;
-
-                    if (config_.globalChromatogramsAreMs1Only && msExperiment->getExperimentType() != MS)
-                        continue;
 
                     int msLevel = msExperiment->getMsLevel(1);
 
